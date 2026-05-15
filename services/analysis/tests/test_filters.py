@@ -103,3 +103,4 @@ def test_fails_with_missing_field():
 def test_fails_with_non_numeric_field():
     passed, reason = passes_technical_filter(_snapshot(rsi="not-a-number"))
     assert passed is False
+    assert "Missing" in reason or "invalid" in reason.lower()

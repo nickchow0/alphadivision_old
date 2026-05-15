@@ -27,7 +27,7 @@ def passes_technical_filter(snapshot: dict) -> Tuple[bool, str]:
         return False, f"Missing or invalid indicator field: {exc}"
 
     if not (_RSI_MIN < rsi < _RSI_MAX):
-        return False, f"RSI {rsi:.1f} outside range ({_RSI_MIN}, {_RSI_MAX})"
+        return False, f"RSI {rsi:.1f} outside exclusive range ({_RSI_MIN}, {_RSI_MAX})"
 
     if price <= sma50:
         return False, f"Price {price:.2f} not above SMA50 {sma50:.2f}"
