@@ -232,6 +232,35 @@ alphadivision/
 - PostgreSQL data volume mounted to VM disk — survives container restarts
 - Redis configured with AOF (Append Only File) persistence — message queue survives restarts
 
+### Deployment & Redis Persistence
+
+**Does a `git pull` wipe Redis?**
+No — `git pull` only updates code files on disk. Redis runs as a separate Docker container with its own memory and AOF persistence file. Pulling new code has zero effect on Redis state.
+
+**What about `docker-compose up --build`?**
+This is where care is needed. Rebuilding and restarting containers does briefly interrupt services, but Redis data is safe because:
+- The AOF file is stored in a **named Docker volume** (`redis_data`), not inside the container image
+- Named volumes persist across container rebuilds and restarts — they are only deleted if you explicitly run `docker-compose down -v` (the `-v` flag is the danger)
+
+**Safe deployment workflow:**
+```bash
+git pull origin main                        # pull new code — Redis unaffected
+docker-compose build                        # rebuild changed images — Redis unaffected
+docker-compose up -d --no-deps <service>    # restart only the changed service
+```
+
+Restarting one service at a time means Redis keeps running throughout. The full stack never goes down simultaneously.
+
+**What if Redis does restart?**
+With AOF persistence enabled, Redis replays its log on startup and restores all keys within seconds. The only data at risk is messages written in the last second before shutdown — for a swing trading bot running on 15-minute cycles, this is negligible.
+
+**Never run this in production:**
+```bash
+docker-compose down -v   # ⚠️ deletes ALL volumes including Redis AOF and PostgreSQL data
+```
+
+This command is only safe in development to reset a clean state.
+
 ### Alternatives Considered
 
 **Hosting:**
