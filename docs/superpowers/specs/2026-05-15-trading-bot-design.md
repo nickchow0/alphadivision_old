@@ -97,6 +97,32 @@ Two models are used depending on complexity:
 
 Decisions below a confidence threshold of 0.65 are logged but not acted on. All decisions — including skipped ones — are written to PostgreSQL.
 
+### Known Limitation: AI Self-Reported Confidence
+
+In V1, the confidence score is entirely self-reported by Claude as part of its JSON response. This is a pragmatic starting point but has three weaknesses:
+
+| Weakness | Implication |
+|---|---|
+| **Not calibrated** | A confidence of 0.78 does not mean the trade will be right 78% of the time |
+| **Inconsistent** | The same market data on different days may produce different confidence scores |
+| **Not backtestable** | Cannot verify historically whether high-confidence calls outperformed low-confidence ones |
+
+### Future Improvement: Calculated Confidence
+
+A more robust approach — to be implemented after sufficient paper trading data is collected — calculates confidence independently and uses Claude's score as one input among several:
+
+```
+Confidence = weighted combination of:
+  - Technical signal strength    (RSI distance from midpoint, SMA spread)
+  - News sentiment score         (dedicated NLP scoring, not Claude's interpretation)
+  - Claude's stated confidence   (one input, not the sole arbiter)
+  - Historical accuracy          (did past setups with similar parameters succeed?)
+```
+
+This makes confidence **measurable, auditable, and improvable over time**. The threshold (currently 0.65) can then be tuned based on real performance data rather than intuition.
+
+**Prerequisite:** at least 2–3 months of paper trading data in PostgreSQL before this is worth implementing.
+
 ### Alternatives Considered
 
 | Option | API Cost | Decision Quality | Speed | Decision |
