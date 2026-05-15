@@ -1,0 +1,152 @@
+import json
+import pytest
+from unittest.mock import patch, MagicMock
+
+from claude_client import build_prompt, call_claude, MODEL_HAIKU
+
+
+def _sample_snapshot() -> dict:
+    return {
+        "symbol": "AAPL",
+        "price": 175.50,
+        "rsi": 52.3,
+        "sma20": 172.1,
+        "sma50": 168.5,
+        "sma20_prev": 171.8,
+        "sma20_prev2": 171.5,
+        "news": [
+            {"headline": "Apple reports record earnings", "datetime": 1715000000},
+            {"headline": "iPhone 18 demand strong", "datetime": 1714990000},
+        ],
+        "macro": {"fed_funds_rate": 5.33, "cpi": 314.5},
+    }
+
+
+def _make_claude_response(text: str):
+    """Build a mock Anthropic message response."""
+    mock_content = MagicMock()
+    mock_content.text = text
+    mock_message = MagicMock()
+    mock_message.content = [mock_content]
+    return mock_message
+
+
+# ---------------------------------------------------------------------------
+# build_prompt tests
+# ---------------------------------------------------------------------------
+
+def test_build_prompt_includes_symbol():
+    prompt = build_prompt(_sample_snapshot())
+    assert "AAPL" in prompt
+
+
+def test_build_prompt_includes_price_and_indicators():
+    prompt = build_prompt(_sample_snapshot())
+    assert "175.50" in prompt
+    assert "52.3" in prompt   # RSI
+    assert "172.1" in prompt  # SMA20
+    assert "168.5" in prompt  # SMA50
+
+
+def test_build_prompt_includes_news_headlines():
+    prompt = build_prompt(_sample_snapshot())
+    assert "Apple reports record earnings" in prompt
+    assert "iPhone 18 demand strong" in prompt
+
+
+def test_build_prompt_handles_empty_news():
+    snapshot = _sample_snapshot()
+    snapshot["news"] = []
+    prompt = build_prompt(snapshot)
+    assert "No recent news" in prompt
+
+
+def test_build_prompt_includes_macro_data():
+    prompt = build_prompt(_sample_snapshot())
+    assert "5.33" in prompt
+    assert "314.5" in prompt
+
+
+def test_build_prompt_requests_json_format():
+    prompt = build_prompt(_sample_snapshot())
+    assert "decision" in prompt
+    assert "confidence" in prompt
+    assert "reasoning" in prompt
+
+
+# ---------------------------------------------------------------------------
+# call_claude tests
+# ---------------------------------------------------------------------------
+
+def test_call_claude_returns_parsed_decision():
+    response_json = json.dumps({
+        "decision": "buy",
+        "confidence": 0.78,
+        "reasoning": "Strong technical setup with rising SMA20."
+    })
+    mock_response = _make_claude_response(response_json)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        result = call_claude(_sample_snapshot(), "test-api-key")
+
+    assert result["decision"] == "buy"
+    assert result["confidence"] == pytest.approx(0.78)
+    assert "reasoning" in result
+    assert "model" in result
+
+
+def test_call_claude_uses_haiku_by_default():
+    response_json = json.dumps({"decision": "hold", "confidence": 0.5, "reasoning": "Neutral."})
+    mock_response = _make_claude_response(response_json)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        mock_create = MockClient.return_value.messages.create
+        mock_create.return_value = mock_response
+        call_claude(_sample_snapshot(), "test-api-key")
+
+    call_kwargs = mock_create.call_args[1]
+    assert call_kwargs["model"] == MODEL_HAIKU
+
+
+def test_call_claude_raises_on_non_json_response():
+    mock_response = _make_claude_response("Sorry, I cannot help with that.")
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        with pytest.raises(ValueError, match="not valid JSON"):
+            call_claude(_sample_snapshot(), "test-api-key")
+
+
+def test_call_claude_raises_on_missing_decision_field():
+    response_json = json.dumps({"confidence": 0.7, "reasoning": "Missing decision."})
+    mock_response = _make_claude_response(response_json)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        with pytest.raises(ValueError, match="missing field 'decision'"):
+            call_claude(_sample_snapshot(), "test-api-key")
+
+
+def test_call_claude_raises_on_invalid_decision_value():
+    response_json = json.dumps({"decision": "maybe", "confidence": 0.6, "reasoning": "Unsure."})
+    mock_response = _make_claude_response(response_json)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        with pytest.raises(ValueError, match="Invalid decision"):
+            call_claude(_sample_snapshot(), "test-api-key")
+
+
+def test_call_claude_accepts_custom_model():
+    response_json = json.dumps({"decision": "sell", "confidence": 0.8, "reasoning": "Downtrend."})
+    mock_response = _make_claude_response(response_json)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        mock_create = MockClient.return_value.messages.create
+        mock_create.return_value = mock_response
+        result = call_claude(_sample_snapshot(), "test-api-key", model="claude-sonnet-4-5")
+
+    assert result["model"] == "claude-sonnet-4-5"
+    call_kwargs = mock_create.call_args[1]
+    assert call_kwargs["model"] == "claude-sonnet-4-5"
