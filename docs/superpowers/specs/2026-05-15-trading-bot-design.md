@@ -32,14 +32,11 @@ Five independent services communicate through a Redis message bus. Each service 
 
 ### Alternatives Considered
 
-**A — Single Script**
-One Python file handling everything. Fastest to build, easiest to debug. Rejected because it can't support a proper dashboard, is hard to extend, and becomes fragile as complexity grows. Good for prototyping, wrong for learning distributed systems.
-
-**B — Modular Pipeline + SQLite**
-Separate modules in one codebase sharing a SQLite database. Cleaner than a single script, easier than microservices. Rejected in favour of Option C because the user's explicit goal is to learn how complex distributed systems are built. SQLite was also considered as a PostgreSQL replacement to reduce memory usage — see Infrastructure section.
-
-**C — Microservices + Redis (chosen)**
-Maximum complexity, maximum learning value. Each service has a single clear purpose, communicates through well-defined interfaces, and can be understood and tested independently.
+| Option | Description | Pros | Cons | Decision |
+|---|---|---|---|---|
+| A — Single Script | One Python file handles everything | Fast to build, easy to debug, no moving parts | Hard to extend, no real dashboard, fragile as complexity grows | Rejected |
+| B — Modular Pipeline + SQLite | Separate modules sharing a SQLite database | Cleaner than single script, easier than microservices | Limited learning value for distributed systems | Rejected |
+| **C — Microservices + Redis** | 5 independent services via Redis message bus | Max learning value, clean separation, each service independently testable | More upfront complexity | **Chosen** |
 
 ---
 
@@ -69,11 +66,12 @@ Failed fetches log an error and retry on the next cycle. The bot continues runni
 
 ### Alternatives Considered
 
-**Polygon.io (~$30/mo)** — more reliable, faster WebSocket streaming, better data quality. Rejected for now because the free tier sources (Alpaca + Finnhub + FRED) are sufficient for swing trading at hourly/15-minute resolution. Can be swapped in later if data quality becomes a bottleneck.
-
-**Yahoo Finance (yfinance)** — free and unlimited but uses an unofficial API that can break without notice. Unsuitable for a live trading system.
-
-**WebSocket streaming** — eliminates polling latency. Overkill for swing trading where 15-minute resolution is sufficient. Worth revisiting if the strategy moves toward intraday.
+| Option | Cost | Reliability | Latency | Decision |
+|---|---|---|---|---|
+| **Alpaca + Finnhub + FRED** | Free | Good | 15 min polling | **Chosen** — sufficient for swing trading |
+| Polygon.io | ~$30/mo | Better, official WebSocket | Real-time streaming | Rejected — overkill at this stage, can upgrade later |
+| Yahoo Finance (yfinance) | Free | Poor — unofficial API, breaks without notice | Poll-based | Rejected — unsuitable for a live trading system |
+| WebSocket streaming | Varies | N/A | Real-time | Rejected — overkill for 15-min swing trading resolution |
 
 ---
 
@@ -101,17 +99,13 @@ Decisions below a confidence threshold of 0.65 are logged but not acted on. All 
 
 ### Alternatives Considered
 
-**Technical signals only** — no AI involved, fully deterministic. Cheaper and faster but misses news and macro context that affects swing trades significantly. Rejected because incorporating AI reasoning was a stated goal.
-
-**AI-only (no technical filter)** — every symbol goes to Claude on every cycle. Much higher API costs at scale (potentially $100s/month at frequent intervals) and weaker signal quality because the AI has no pre-filtering. Rejected in favour of the hybrid approach.
-
-**Local AI model (Llama, Mistral)** — no API costs, full privacy, runs on-device. Rejected because:
-- 7B–13B parameter models lag behind Claude on multi-step financial reasoning
-- The Oracle VM's ARM CPU would make inference slow
-- A GPU capable of running a quality local model costs $300–1500+
-- Claude Haiku costs ~$0.001/call — negligible for swing trading frequency
-
-**GPT-4o** — comparable reasoning quality to Claude Sonnet. Slightly higher cost. Rejected simply because Claude was the preferred choice, not a technical limitation.
+| Option | API Cost | Decision Quality | Speed | Decision |
+|---|---|---|---|---|
+| **Hybrid: Tech filter + Claude** | Low (~$0.001/call) | Best of both — fast filter, smart final call | Fast | **Chosen** |
+| Technical signals only | Free | Misses news and macro context | Fastest | Rejected — AI reasoning was a stated goal |
+| AI-only (no technical filter) | High ($100s/mo at scale) | Good but no pre-filtering wastes calls | Slower | Rejected — costly and lower signal quality |
+| Local AI (Llama/Mistral 7B–13B) | Hardware only | Weaker multi-step financial reasoning | Slow on ARM CPU | Rejected — quality gap not worth hardware cost |
+| GPT-4o | Slightly higher than Claude | Comparable to Claude Sonnet | Similar | Rejected — preference for Claude, not a technical limitation |
 
 ---
 
@@ -144,9 +138,11 @@ Decisions below a confidence threshold of 0.65 are logged but not acted on. All 
 
 ### Alternatives Considered
 
-**Limit orders** — more control over fill price, reduces slippage. Added complexity for order management (handling partial fills, cancellations, timeouts). Deferred as a future improvement once the core system is stable.
-
-**Stop-loss orders** — automatic downside protection at the broker level. Not implemented in V1 because the Analysis Service monitors positions on each cycle and can issue sell signals. Can be added as an additional safety layer later.
+| Option | Price Control | Complexity | In V1? | Decision |
+|---|---|---|---|---|
+| **Market orders** | None — fills at market price | Simple, no edge cases | Yes | **Chosen** |
+| Limit orders | High — set exact fill price | Complex: partial fills, cancellations, timeouts | No | Deferred — good future improvement once core is stable |
+| Broker-level stop-loss orders | High — automatic downside protection | Moderate | No | Deferred — Analysis Service handles exits via sell signals for now |
 
 ---
 
@@ -177,11 +173,20 @@ Dashboard is not exposed to the public internet. Accessible securely from iPhone
 
 ### Alternatives Considered
 
-**Public URL with basic auth + HTTPS** — accessible from any browser without installing Tailscale. Adds attack surface since the dashboard exposes trading positions and P&L. Rejected in favour of Tailscale for a financial dashboard.
+**Remote access:**
 
-**Telegram bot** — alternative to Discord for alerts. Both are free. Discord chosen because the user is likely already familiar with it.
+| Option | Security | Setup | Works on iPhone/iPad | Decision |
+|---|---|---|---|---|
+| **Tailscale** | Best — private network, not public-facing | Tailscale app on each device | Yes | **Chosen** |
+| Public URL + basic auth + HTTPS | Moderate — public-facing, password protected | Nginx + Let's Encrypt | Yes, any browser | Rejected — financial dashboard shouldn't be public-facing |
 
-**Email-only alerts** — simpler, no Discord setup. Rejected because email is too slow for trade notifications where you may want to act quickly.
+**Alert channel:**
+
+| Option | Speed | Cost | Setup | Decision |
+|---|---|---|---|---|
+| **Discord webhook** | Instant | Free | Webhook URL only | **Chosen** |
+| Telegram bot | Instant | Free | Bot registration required | Rejected — preference for Discord |
+| Email-only | Slow (minutes) | Free (SendGrid) | None | Rejected — too slow for trade notifications |
 
 ---
 
@@ -229,19 +234,30 @@ alphadivision/
 
 ### Alternatives Considered
 
-**Google Cloud e2-micro (free tier)** — 1GB RAM. Rejected for this architecture because the full stack (5 services + Redis + PostgreSQL + OS overhead) requires approximately 930MB, leaving no headroom for spikes. Would require compromises: replacing PostgreSQL with SQLite (~150MB saving) and merging Alert + Dashboard services (~80MB saving). These compromises reduce the learning value and architectural cleanliness.
+**Hosting:**
 
-**Google Cloud e2-small (~$13/mo)** — 2GB RAM. Sufficient for the stack with comfortable headroom. Rejected only because Oracle Cloud offers 24GB for free — strictly better for this use case.
+| Option | RAM | Cost | 24/7? | Decision |
+|---|---|---|---|---|
+| **Oracle Cloud ARM (Ampere A1)** | 24 GB | $0 forever | Yes | **Chosen** |
+| Google Cloud e2-micro | 1 GB | $0 forever | Yes | Rejected — full stack needs ~930MB, no headroom for spikes |
+| Google Cloud e2-small | 2 GB | ~$13/mo | Yes | Rejected — Oracle gives 24GB for free |
+| AWS t2.micro | 1 GB | $0 for 12 months only | Yes | Rejected — too little RAM and billing starts after year 1 |
+| Railway / Render / Fly.io | 256–512 MB per service | Free (limited hours) | No — services sleep | Rejected — incompatible with 24/7 trading bot |
 
-**AWS t2.micro (free tier, 12 months only)** — 1GB RAM, same constraints as GCP e2-micro, and billing starts after 12 months. Rejected on both RAM and cost grounds.
+**Orchestration:**
 
-**Railway / Render / Fly.io** — PaaS platforms with free tiers. All have RAM limits of 256–512MB per service, which is insufficient for even a single service in this stack. Services also sleep on inactivity, which is incompatible with a 24/7 trading bot.
+| Option | Complexity | Learning Value | Right for 1 VM? | Decision |
+|---|---|---|---|---|
+| **Docker Compose** | Low | Good stepping stone to Kubernetes | Yes | **Chosen** |
+| Kubernetes | High | Production-grade, complex | Overkill for 5 services | Rejected — too much overhead for a single VM |
 
-**Kubernetes** — industry standard for microservices orchestration at scale. Rejected in favour of Docker Compose because Kubernetes adds significant operational complexity (control plane, YAML verbosity, networking concepts) that isn't warranted for 5 services on a single VM. Docker Compose is a better learning stepping stone and can be migrated to Kubernetes later if needed.
+**Database:**
 
-**SQLite instead of PostgreSQL** — would save ~150MB RAM and eliminate one service. Rejected because PostgreSQL is the right tool for concurrent writes from multiple services, offers better query capabilities for the dashboard, and is more representative of production systems. Learning to run PostgreSQL in Docker is also valuable.
-
-**Self-hosted Redis alternatives (KeyDB, Valkey)** — drop-in Redis replacements with better multi-threading on ARM. Not worth the added unfamiliarity at this stage. Can be swapped in later without changing application code.
+| Option | RAM Usage | Concurrent Writes | Learning Value | Decision |
+|---|---|---|---|---|
+| **PostgreSQL** | ~150 MB | Excellent | High — production standard | **Chosen** |
+| SQLite | ~20 MB | Poor — single writer only | Low | Rejected — wrong tool for multi-service concurrent writes |
+| KeyDB / Valkey | Similar to Redis | Better ARM multi-threading | Unfamiliar overhead | Rejected — can swap in later without code changes |
 
 ---
 
