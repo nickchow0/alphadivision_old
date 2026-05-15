@@ -11,7 +11,12 @@ _MARKET_CLOSE_MINUTE = 0
 
 
 def is_market_open() -> bool:
-    """Return True if the NYSE is currently open (9:30am–4:00pm ET, Mon–Fri)."""
+    """Return True if NYSE trading hours are active (9:30am–4:00pm ET, Mon–Fri).
+
+    NOTE: Does not account for NYSE market holidays. The Analysis Service will
+    run on holidays — this is an acceptable V1 limitation since the bot uses
+    paper trading and no trades execute if Alpaca has no market data to return.
+    """
     now = datetime.now(ET)
     # weekday(): 0=Monday … 4=Friday, 5=Saturday, 6=Sunday
     if now.weekday() >= 5:

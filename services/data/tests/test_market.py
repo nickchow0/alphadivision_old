@@ -4,6 +4,8 @@ from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from market import is_market_open, get_watchlist
+
 ET = ZoneInfo("America/New_York")
 
 
@@ -16,8 +18,8 @@ def test_market_open_during_trading_hours():
     fake_now = datetime(2026, 5, 13, 10, 0, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is True
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_closed_before_open():
@@ -25,8 +27,8 @@ def test_market_closed_before_open():
     fake_now = datetime(2026, 5, 13, 9, 0, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is False
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_closed_after_close():
@@ -34,8 +36,8 @@ def test_market_closed_after_close():
     fake_now = datetime(2026, 5, 13, 16, 30, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is False
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_closed_on_saturday():
@@ -43,8 +45,8 @@ def test_market_closed_on_saturday():
     fake_now = datetime(2026, 5, 16, 12, 0, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is False
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_closed_on_sunday():
@@ -52,8 +54,8 @@ def test_market_closed_on_sunday():
     fake_now = datetime(2026, 5, 17, 12, 0, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is False
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_open_at_exactly_930():
@@ -61,8 +63,8 @@ def test_market_open_at_exactly_930():
     fake_now = datetime(2026, 5, 13, 9, 30, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is True
+        mock_dt.now.assert_called_with(ET)
 
 
 def test_market_closed_at_exactly_4pm():
@@ -70,8 +72,8 @@ def test_market_closed_at_exactly_4pm():
     fake_now = datetime(2026, 5, 13, 16, 0, 0, tzinfo=ET)
     with patch("market.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
-        from market import is_market_open
         assert is_market_open() is False
+        mock_dt.now.assert_called_with(ET)
 
 
 # ---------------------------------------------------------------------------
@@ -80,29 +82,23 @@ def test_market_closed_at_exactly_4pm():
 
 def test_get_watchlist_returns_default_when_env_unset():
     with patch.dict(os.environ, {}, clear=True):
-        if "WATCHLIST" in os.environ:
-            del os.environ["WATCHLIST"]
-        from market import get_watchlist
         result = get_watchlist()
     assert result == ["AAPL", "MSFT", "GOOGL"]
 
 
 def test_get_watchlist_parses_env_var():
     with patch.dict(os.environ, {"WATCHLIST": "TSLA,NVDA,AMD"}):
-        from market import get_watchlist
         result = get_watchlist()
     assert result == ["TSLA", "NVDA", "AMD"]
 
 
 def test_get_watchlist_strips_whitespace():
     with patch.dict(os.environ, {"WATCHLIST": " TSLA , NVDA , AMD "}):
-        from market import get_watchlist
         result = get_watchlist()
     assert result == ["TSLA", "NVDA", "AMD"]
 
 
 def test_get_watchlist_single_symbol():
     with patch.dict(os.environ, {"WATCHLIST": "SPY"}):
-        from market import get_watchlist
         result = get_watchlist()
     assert result == ["SPY"]
