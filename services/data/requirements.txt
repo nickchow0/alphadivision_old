@@ -1,0 +1,7 @@
+psycopg2-binary==2.9.9
+redis==5.0.4
+python-dotenv==1.0.1
+requests==2.31.0
+pandas==2.2.2
+pandas-ta==0.3.14b
+alpaca-trade-api==3.3.2
