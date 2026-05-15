@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import requests
 import alpaca_trade_api as tradeapi
@@ -35,9 +36,16 @@ def check_all(alpaca_key, alpaca_secret, alpaca_base_url, finnhub_token, fred_ap
     # Finnhub (non-critical — "warning" on failure)
     try:
         start = time.monotonic()
+        now = datetime.now(timezone.utc)
+        yesterday = now - timedelta(days=1)
         resp = requests.get(
             "https://finnhub.io/api/v1/company-news",
-            params={"symbol": "AAPL", "from": "2026-01-01", "to": "2026-01-02", "token": finnhub_token},
+            params={
+                "symbol": "AAPL",
+                "from": yesterday.strftime("%Y-%m-%d"),
+                "to": now.strftime("%Y-%m-%d"),
+                "token": finnhub_token,
+            },
             timeout=10,
         )
         resp.raise_for_status()
