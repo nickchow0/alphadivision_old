@@ -7,7 +7,7 @@ from shared.logger import get_logger
 log = get_logger("alerts")
 
 def main():
-    log.info("Alert Service starting — placeholder")
+    log.info("Alerts Service starting — placeholder")
     while True:
         time.sleep(60)
 
