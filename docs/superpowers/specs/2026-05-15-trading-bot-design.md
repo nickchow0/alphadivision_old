@@ -356,6 +356,64 @@ The dashboard Overview page shows a live API status panel — green/yellow/red f
 
 ---
 
+## 9. Microservice Monitoring & Recovery
+
+### How Docker Compose Handles Crashes
+All services are configured with `restart: always` in `docker-compose.yml`. If a container crashes, Docker automatically restarts it — no manual intervention needed for transient failures (e.g. a one-off network error or OOM spike).
+
+```yaml
+services:
+  data:
+    restart: always
+  analysis:
+    restart: always
+  execution:
+    restart: always
+```
+
+### Detecting a Down Service
+Docker's built-in restart handles crashes, but a service can be running yet stuck — deadlocked, spinning, or silently failing. Each service therefore:
+
+- Publishes a **heartbeat** to Redis every 60 seconds (`heartbeat:<service-name>` key with a 90-second TTL)
+- Exposes a `/health` HTTP endpoint returning `200 OK` when healthy
+
+A dedicated **watchdog** (lightweight script running on the VM outside Docker) checks heartbeats every 2 minutes:
+
+| Condition | Action |
+|---|---|
+| Heartbeat missing for >90s | Alert Discord + email, attempt `docker-compose restart <service>` |
+| `/health` returns non-200 | Alert Discord, log details |
+| Service restart fails 3 times | Alert Discord + email with `CRITICAL` flag — requires manual intervention |
+
+### Per-Service Recovery Behaviour
+
+| Service | If it goes down | Impact | Auto-recovers? |
+|---|---|---|---|
+| Data Service | No new market snapshots published | Analysis pauses, no new signals | ✅ Yes — restarts, resumes polling |
+| Analysis Service | No new trade signals generated | No new orders placed | ✅ Yes — restarts, picks up next data snapshot |
+| Execution Service | Signals queue up in Redis | Orders delayed until recovery | ✅ Yes — restarts, reconciles positions before placing new orders |
+| Alert Service | No Discord/email notifications | Trades still execute, silently | ✅ Yes — restarts, resumes listening |
+| Dashboard Service | UI unavailable | No visibility, bot still runs | ✅ Yes — restarts, reads fresh data from PostgreSQL |
+| Redis | All inter-service messaging stops | Full trading halt | ✅ Yes — AOF persistence means no message loss on restart |
+| PostgreSQL | No writes possible | Execution Service halts new orders | ✅ Yes — data volume persists, resumes on restart |
+
+### Logging
+All services use structured logging with consistent fields:
+
+```json
+{"timestamp": "2026-05-15T09:32:01Z", "service": "execution", "level": "INFO", "message": "Order placed", "symbol": "AAPL", "qty": 5, "side": "buy"}
+```
+
+Logs are written to stdout (captured by Docker) and to a mounted log volume on the VM at `/var/log/alphadivision/`. Log rotation is configured to keep 7 days of history before purging.
+
+### Dashboard Visibility
+The dashboard Overview page shows:
+- Live status (green/yellow/red) for each service based on heartbeat age
+- Last heartbeat timestamp per service
+- Recent error log entries across all services
+
+---
+
 ## API Keys Required
 
 | Service | Key | Free Tier |
