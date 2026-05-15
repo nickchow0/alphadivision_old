@@ -68,12 +68,9 @@ def test_write_health_result_executes_insert():
         write_health_result("alpaca", "ok", 150, None)
 
     mock_cursor.execute.assert_called_once()
-    call_args = mock_cursor.execute.call_args
-    sql = call_args[0][0]
-    params = call_args[0][1]
+    sql, params = mock_cursor.execute.call_args[0]
     assert "INSERT INTO api_health" in sql
-    assert "alpaca" in params
-    assert "ok" in params
+    assert params == ("alpaca", "ok", 150, None)
 
 
 def test_write_health_result_includes_latency():
@@ -83,9 +80,8 @@ def test_write_health_result_includes_latency():
     with patch("health_checker.get_conn", return_value=mock_cm):
         write_health_result("alpaca", "ok", 200, None)
 
-    call_args = mock_cursor.execute.call_args
-    params = call_args[0][1]
-    assert 200 in params
+    _, params = mock_cursor.execute.call_args[0]
+    assert params == ("alpaca", "ok", 200, None)
 
 
 def test_write_health_result_includes_error_message():
@@ -95,9 +91,8 @@ def test_write_health_result_includes_error_message():
     with patch("health_checker.get_conn", return_value=mock_cm):
         write_health_result("alpaca", "error", 0, "Connection refused")
 
-    call_args = mock_cursor.execute.call_args
-    params = call_args[0][1]
-    assert "Connection refused" in params
+    _, params = mock_cursor.execute.call_args[0]
+    assert params == ("alpaca", "error", 0, "Connection refused")
 
 
 # ---------------------------------------------------------------------------
