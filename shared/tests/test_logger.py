@@ -55,3 +55,10 @@ def test_json_formatter_includes_exception_info():
     parsed = json.loads(output)
     assert "exception" in parsed
     assert "ValueError" in parsed["exception"]
+
+
+def test_get_logger_respects_log_level_env(monkeypatch):
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    import logging
+    logger = get_logger("env-test-service")
+    assert logger.level == logging.DEBUG

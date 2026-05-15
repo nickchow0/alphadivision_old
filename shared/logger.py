@@ -11,7 +11,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_obj = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "service": self.service_name,
             "level": record.levelname,
             "message": record.getMessage(),
@@ -27,5 +27,7 @@ def get_logger(service_name: str) -> logging.Logger:
         handler = logging.StreamHandler()
         handler.setFormatter(JSONFormatter(service_name))
         logger.addHandler(handler)
-    logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+        logger.propagate = False
+    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logger.setLevel(getattr(logging, level, logging.INFO))
     return logger
