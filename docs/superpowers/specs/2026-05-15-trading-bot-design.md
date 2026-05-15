@@ -443,6 +443,95 @@ The dashboard Overview page shows:
 
 ---
 
+## 10. VM Failure & Database Recovery
+
+### Scenario 1 — VM Reboots (Planned or Unexpected)
+Oracle Cloud VMs occasionally reboot for maintenance or after a power event. This is the most common failure scenario.
+
+**What happens:**
+- All Docker containers stop
+- Redis AOF file and PostgreSQL data volume remain intact on disk
+- On reboot, Docker starts automatically (configured via `systemctl enable docker`)
+- All containers restart via `restart: always` policy
+- Redis replays AOF log and restores state within seconds
+- Execution Service reconciles open positions against Alpaca before placing any new orders
+
+**Recovery time:** ~2–3 minutes, fully automatic. No manual intervention needed.
+
+**How to ensure Docker starts on boot:**
+```bash
+sudo systemctl enable docker
+sudo systemctl enable containerd
+```
+
+---
+
+### Scenario 2 — VM is Completely Down (Extended Outage)
+Oracle Cloud has a strong uptime SLA but outages do happen. If the VM is unreachable for an extended period:
+
+**Implications:**
+- No new data is fetched — bot is blind to market moves
+- No new orders are placed — existing positions remain open at Alpaca
+- Open positions are exposed to market risk with no monitoring or stop-loss
+
+**What to do:**
+1. Log into Alpaca directly and manually review open positions
+2. Close any positions where risk exposure is unacceptable
+3. Wait for the VM to recover, or spin up a new Oracle instance from the backup (see below)
+
+**This is why paper trading first matters** — you want to understand your typical open positions and exposure before a real outage happens with real money.
+
+---
+
+### Scenario 3 — PostgreSQL Data Corruption
+Corruption can occur from a hard shutdown mid-write, disk failure, or a bug.
+
+**Symptoms:** Services fail to start, dashboard shows no data, PostgreSQL logs show errors.
+
+**Recovery options:**
+
+| Option | Data Loss | Recovery Time | Effort |
+|---|---|---|---|
+| PostgreSQL auto-recovery (WAL replay) | None | Minutes | Automatic |
+| Restore from daily backup | Up to 24 hours | ~30 minutes | Manual |
+| Rebuild from Alpaca history | Trades only, no AI decisions | Hours | Manual |
+
+**Backup strategy:**
+- A daily cron job on the VM dumps the database to a compressed file:
+  ```bash
+  pg_dump alphadivision | gzip > /backups/alphadivision-$(date +%Y%m%d).sql.gz
+  ```
+- Backups are copied to Oracle Cloud Object Storage (free tier: 20GB) for off-VM redundancy
+- Last 30 days of backups are retained
+
+**Restoring from backup:**
+```bash
+gunzip < /backups/alphadivision-20260515.sql.gz | psql alphadivision
+```
+
+---
+
+### Scenario 4 — Accidental `docker-compose down -v`
+This deletes all Docker volumes including PostgreSQL data and Redis AOF. Recovery depends entirely on whether a backup exists.
+
+- If a daily backup exists: restore PostgreSQL from the latest backup (up to 24 hours of data loss)
+- Redis state is transient by design — messages in flight are lost but services rebuild state on next data cycle
+- **Prevention:** the deployment workflow (Section 6) never uses `-v`. Document this clearly in the team runbook.
+
+---
+
+### Summary
+
+| Scenario | Data Loss Risk | Auto-Recovers? | Manual Action Needed |
+|---|---|---|---|
+| VM reboot | None | ✅ Yes | None |
+| Extended VM outage | None (data safe) | ✅ When VM returns | Monitor open positions manually |
+| PostgreSQL corruption (soft) | None | ✅ WAL replay | None |
+| PostgreSQL corruption (hard) | Up to 24 hours | ❌ No | Restore from backup |
+| `docker-compose down -v` | Up to 24 hours | ❌ No | Restore from backup |
+
+---
+
 ## API Keys Required
 
 | Service | Key | Free Tier |
