@@ -37,3 +37,30 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 log = logging.getLogger("watchdog")
+
+# ---------------------------------------------------------------------------
+# Notification helpers
+# ---------------------------------------------------------------------------
+
+def send_discord(webhook_url: str, message: str) -> None:
+    """POST a message to a Discord webhook. Raises on failure."""
+    resp = requests.post(webhook_url, json={"content": message}, timeout=10)
+    resp.raise_for_status()
+
+
+def send_email(
+    api_key: str,
+    from_email: str,
+    to_email: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Send a plain-text email via SendGrid. Raises on failure."""
+    message = Mail(
+        from_email=from_email,
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=body,
+    )
+    sg = SendGridAPIClient(api_key)
+    sg.send(message)
