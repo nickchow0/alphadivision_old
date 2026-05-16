@@ -11,6 +11,7 @@ from filters import passes_technical_filter
 from claude_client import call_claude, MODEL_HAIKU
 from signal_writer import write_decision, write_signal, CONFIDENCE_THRESHOLD
 from health_server import start_health_server
+from alerter import send_alert
 
 log = get_logger("analysis")
 
@@ -63,6 +64,7 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
             result = call_claude(snapshot, anthropic_api_key, model=MODEL_HAIKU)
         except Exception as exc:
             log.error(f"[{symbol}] Claude call failed: {exc}")
+            send_alert(f"[analysis] [{symbol}] Claude call failed: {exc}")
             return
 
         decision = result["decision"]
@@ -88,6 +90,7 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
             )
         except Exception as exc:
             log.error(f"[{symbol}] Failed to write decision to DB: {exc}")
+            send_alert(f"[analysis] [{symbol}] DB write failed: {exc}")
             return
 
         log.info(
@@ -103,9 +106,11 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
                 log.info(f"[{symbol}] Signal published: {decision} ({confidence:.2f})")
             except Exception as exc:
                 log.error(f"[{symbol}] Failed to publish signal: {exc}")
+                send_alert(f"[analysis] [{symbol}] Signal publish failed: {exc}")
 
     except Exception as exc:
         log.error(f"[{symbol}] Unexpected error in _process_snapshot: {exc}")
+        send_alert(f"[analysis] [{symbol}] Unexpected error: {exc}")
     finally:
         if msg_id:
             ack_snapshot(msg_id)
@@ -128,6 +133,7 @@ def main() -> None:
                 _publish_heartbeat()
             except Exception as exc:
                 log.error(f"Heartbeat failed: {exc}")
+                send_alert(f"[analysis] Heartbeat publish failed: {exc}")
             last_heartbeat = now
 
         # Read and process snapshots (blocks up to 5 seconds if none available)
@@ -135,6 +141,7 @@ def main() -> None:
             snapshots = read_next_snapshots(count=10, block_ms=5000)
         except Exception as exc:
             log.error(f"Failed to read from stream: {exc}")
+            send_alert(f"[analysis] Stream read failed: {exc}")
             time.sleep(5)
             continue
 

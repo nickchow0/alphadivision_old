@@ -53,6 +53,8 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: analysis
+      # Optional: set to a Discord webhook URL to enable failure alerts
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     volumes:
       - ./shared:/app/shared
       - logs:/var/log/alphadivision
