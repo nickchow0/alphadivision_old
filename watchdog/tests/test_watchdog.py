@@ -159,5 +159,42 @@ class TestRestartService(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestCheckDashboardHealth(unittest.TestCase):
+    @patch("watchdog.watchdog.requests.get")
+    @patch("watchdog.watchdog.send_discord")
+    def test_no_alert_when_healthy(self, mock_discord, mock_get):
+        mock_get.return_value.status_code = 200
+        from watchdog.watchdog import check_dashboard_health
+        check_dashboard_health("https://discord.test/webhook")
+        mock_discord.assert_not_called()
+
+    @patch("watchdog.watchdog.requests.get")
+    @patch("watchdog.watchdog.send_discord")
+    def test_sends_discord_on_non_200(self, mock_discord, mock_get):
+        mock_get.return_value.status_code = 500
+        from watchdog.watchdog import check_dashboard_health
+        check_dashboard_health("https://discord.test/webhook")
+        mock_discord.assert_called_once()
+        msg = mock_discord.call_args[0][1]
+        self.assertIn("dashboard", msg.lower())
+
+    @patch("watchdog.watchdog.requests.get")
+    @patch("watchdog.watchdog.send_discord")
+    def test_sends_discord_on_exception(self, mock_discord, mock_get):
+        mock_get.side_effect = requests.exceptions.ConnectionError("refused")
+        from watchdog.watchdog import check_dashboard_health
+        check_dashboard_health("https://discord.test/webhook")
+        mock_discord.assert_called_once()
+
+    @patch("watchdog.watchdog.requests.get")
+    @patch("watchdog.watchdog.send_discord")
+    def test_swallows_discord_failure_gracefully(self, mock_discord, mock_get):
+        mock_get.return_value.status_code = 500
+        mock_discord.side_effect = Exception("discord down")
+        from watchdog.watchdog import check_dashboard_health
+        # Should not raise
+        check_dashboard_health("https://discord.test/webhook")
+
+
 if __name__ == "__main__":
     unittest.main()

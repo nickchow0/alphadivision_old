@@ -135,3 +135,34 @@ def restart_service(service: str) -> bool:
     except Exception as exc:
         log.error("Exception restarting %s: %s", service, exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Dashboard HTTP health check
+# ---------------------------------------------------------------------------
+
+def check_dashboard_health(webhook_url: str) -> None:
+    """
+    GET the dashboard /health endpoint. Send a Discord alert if non-200 or unreachable.
+    Email is intentionally omitted — this is a soft health check, not a service-down alert.
+    """
+    try:
+        resp = requests.get(DASHBOARD_HEALTH_URL, timeout=10)
+        if resp.status_code != 200:
+            log.warning("Dashboard /health returned HTTP %s", resp.status_code)
+            try:
+                send_discord(
+                    webhook_url,
+                    f"⚠️ Dashboard /health returned HTTP {resp.status_code}",
+                )
+            except Exception as exc:
+                log.error("Failed to send Discord dashboard health alert: %s", exc)
+    except Exception as exc:
+        log.warning("Dashboard /health unreachable: %s", exc)
+        try:
+            send_discord(
+                webhook_url,
+                f"⚠️ Dashboard /health unreachable: {exc}",
+            )
+        except Exception as disc_exc:
+            log.error("Failed to send Discord dashboard health alert: %s", disc_exc)
