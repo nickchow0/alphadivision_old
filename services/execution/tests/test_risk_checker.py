@@ -119,6 +119,12 @@ def test_buy_allowed_when_positions_empty():
     assert ok is True
 
 
+def test_position_rules_blocks_unknown_side():
+    ok, reason = check_position_rules("AAPL", "short", {"AAPL": 5})
+    assert ok is False
+    assert "short" in reason
+
+
 # ---------------------------------------------------------------------------
 # check_position_limit
 # ---------------------------------------------------------------------------
@@ -147,6 +153,12 @@ def test_position_limit_blocks_with_empty_positions_at_max():
     positions = {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0}
     ok, _ = check_position_limit(positions)
     assert ok is False
+
+
+def test_position_limit_allows_sell_regardless_of_count():
+    positions = {"AAPL": 5, "MSFT": 3, "GOOGL": 2, "AMZN": 1, "TSLA": 4}
+    ok, _ = check_position_limit(positions, "sell")
+    assert ok is True
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +190,11 @@ def test_calculate_qty_zero_price_returns_zero():
 
 def test_calculate_qty_negative_price_returns_zero():
     result = calculate_qty(100_000.0, -10.0)
+    assert result == 0
+
+
+def test_calculate_qty_negative_portfolio_returns_zero():
+    result = calculate_qty(-100_000.0, 100.0)
     assert result == 0
 
 

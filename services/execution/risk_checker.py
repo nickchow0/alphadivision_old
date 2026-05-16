@@ -50,6 +50,8 @@ def check_position_rules(symbol: str, side: str, positions: dict) -> Tuple[bool,
         side: "buy" or "sell"
         positions: dict mapping symbol -> qty for currently held positions
     """
+    if side not in ("buy", "sell"):
+        return False, f"Unknown order side: {side!r}"
     if side == "buy" and symbol in positions:
         return False, f"Already holding {symbol} ({positions[symbol]} shares) — will not double-up"
     if side == "sell" and symbol not in positions:
@@ -57,13 +59,16 @@ def check_position_rules(symbol: str, side: str, positions: dict) -> Tuple[bool,
     return True, ""
 
 
-def check_position_limit(positions: dict) -> Tuple[bool, str]:
+def check_position_limit(positions: dict, side: str = "buy") -> Tuple[bool, str]:
     """
     Layer 1b: maximum 5 open positions at once.
 
-    Only applies to buy-side orders — this check should not be called for sells.
+    Only enforced for buy orders — sells are always allowed regardless of
+    position count. Passing side="sell" always returns (True, "").
     Count is based on number of keys in positions dict, regardless of qty.
     """
+    if side == "sell":
+        return True, ""
     count = len(positions)
     if count >= _MAX_POSITIONS:
         return False, f"At maximum open positions ({count}/{_MAX_POSITIONS})"
@@ -79,7 +84,7 @@ def calculate_qty(portfolio_value: float, price: float) -> int:
     Returns 0 if price is zero or negative, or if the portfolio is too small
     to buy even a single share at the 2% limit.
     """
-    if price <= 0:
+    if price <= 0 or portfolio_value <= 0:
         return 0
     return math.floor((portfolio_value * _RISK_PCT) / price)
 
