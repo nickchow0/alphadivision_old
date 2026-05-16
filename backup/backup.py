@@ -202,3 +202,77 @@ def prune_oci_backups(
                 log.error("Exception deleting OCI object %s: %s", name, exc)
 
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+def run_backup(cfg: dict, today: "date | None" = None) -> bool:
+    """
+    Run a full backup cycle:
+      1. pg_dump → compressed local file
+      2. Upload to OCI Object Storage
+      3. Prune local backups older than RETENTION_DAYS
+      4. Prune OCI backups older than RETENTION_DAYS
+
+    Returns True only if both dump and upload succeeded.
+    Pruning always runs regardless of upload success.
+    """
+    if today is None:
+        today = date.today()
+
+    filename = f"{BACKUP_FILENAME_PREFIX}{today.strftime('%Y%m%d')}.sql.gz"
+    backup_dir = Path(cfg["backup_dir"])
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    output_path = str(backup_dir / filename)
+
+    log.info("Starting backup: %s", filename)
+
+    # Step 1: Dump
+    dump_ok = run_pg_dump(cfg["pg_user"], cfg["db_name"], output_path)
+    if not dump_ok:
+        log.error("Backup failed at pg_dump step")
+        return False
+
+    # Step 2: Upload
+    upload_ok = upload_to_oci(cfg["oci_bucket"], cfg["oci_namespace"], filename, output_path)
+    if not upload_ok:
+        log.error("Backup upload failed — local file retained at %s", output_path)
+
+    # Step 3 & 4: Prune (always runs, even if upload failed)
+    prune_local_backups(cfg["backup_dir"])
+    prune_oci_backups(cfg["oci_bucket"], cfg["oci_namespace"])
+
+    if dump_ok and upload_ok:
+        log.info("Backup complete: %s", filename)
+    return dump_ok and upload_ok
+
+
+def main() -> None:
+    """Entry point: load config from environment and run one backup cycle."""
+    env_path = "/opt/alphadivision/.env"
+    if not os.path.exists(env_path):
+        env_path = ".env"
+    load_dotenv(env_path)
+
+    required_vars = ["POSTGRES_USER", "OCI_BUCKET_NAME", "OCI_NAMESPACE"]
+    missing = [v for v in required_vars if not os.environ.get(v)]
+    if missing:
+        log.critical("Missing required environment variables: %s", ", ".join(missing))
+        raise SystemExit(1)
+
+    cfg = {
+        "pg_user": os.environ["POSTGRES_USER"],
+        "db_name": DB_NAME,
+        "backup_dir": str(BACKUP_DIR),
+        "oci_bucket": os.environ["OCI_BUCKET_NAME"],
+        "oci_namespace": os.environ["OCI_NAMESPACE"],
+    }
+
+    success = run_backup(cfg)
+    raise SystemExit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

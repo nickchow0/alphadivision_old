@@ -234,5 +234,88 @@ class TestPruneOciBackups(unittest.TestCase):
         self.assertEqual(deleted, [])
 
 
+class TestRunBackup(unittest.TestCase):
+    def _cfg(self, tmpdir=None):
+        backup_dir = tmpdir or "/backups/alphadivision"
+        return {
+            "pg_user": "pguser",
+            "db_name": "alphadivision",
+            "backup_dir": backup_dir,
+            "oci_bucket": "my-bucket",
+            "oci_namespace": "my-namespace",
+        }
+
+    @patch("backup.backup.prune_oci_backups")
+    @patch("backup.backup.prune_local_backups")
+    @patch("backup.backup.upload_to_oci")
+    @patch("backup.backup.run_pg_dump")
+    def test_full_success_flow(self, mock_dump, mock_upload, mock_prune_local, mock_prune_oci):
+        import tempfile
+        from backup.backup import run_backup
+        from datetime import date
+        mock_dump.return_value = True
+        mock_upload.return_value = True
+        mock_prune_local.return_value = []
+        mock_prune_oci.return_value = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            today = date(2026, 5, 16)
+            result = run_backup(self._cfg(tmpdir), today=today)
+
+            self.assertTrue(result)
+            # Dump called with correct args
+            mock_dump.assert_called_once()
+            dump_args = mock_dump.call_args[0]
+            self.assertEqual(dump_args[0], "pguser")
+            self.assertEqual(dump_args[1], "alphadivision")
+            self.assertIn("alphadivision-20260516.sql.gz", dump_args[2])
+            # Upload called with correct args
+            mock_upload.assert_called_once()
+            upload_args = mock_upload.call_args[0]
+            self.assertEqual(upload_args[0], "my-bucket")
+            self.assertEqual(upload_args[1], "my-namespace")
+            self.assertEqual(upload_args[2], "alphadivision-20260516.sql.gz")
+            # Pruning called
+            mock_prune_local.assert_called_once()
+            mock_prune_oci.assert_called_once()
+
+    @patch("backup.backup.prune_oci_backups")
+    @patch("backup.backup.prune_local_backups")
+    @patch("backup.backup.upload_to_oci")
+    @patch("backup.backup.run_pg_dump")
+    def test_returns_false_when_dump_fails(self, mock_dump, mock_upload, mock_prune_local, mock_prune_oci):
+        import tempfile
+        from backup.backup import run_backup
+        from datetime import date
+        mock_dump.return_value = False
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = run_backup(self._cfg(tmpdir), today=date(2026, 5, 16))
+
+            self.assertFalse(result)
+            mock_upload.assert_not_called()
+
+    @patch("backup.backup.prune_oci_backups")
+    @patch("backup.backup.prune_local_backups")
+    @patch("backup.backup.upload_to_oci")
+    @patch("backup.backup.run_pg_dump")
+    def test_pruning_still_runs_when_upload_fails(self, mock_dump, mock_upload, mock_prune_local, mock_prune_oci):
+        """Upload failure should not skip pruning — old backups must still be cleaned up."""
+        import tempfile
+        from backup.backup import run_backup
+        from datetime import date
+        mock_dump.return_value = True
+        mock_upload.return_value = False
+        mock_prune_local.return_value = []
+        mock_prune_oci.return_value = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = run_backup(self._cfg(tmpdir), today=date(2026, 5, 16))
+
+            self.assertFalse(result)
+            mock_prune_local.assert_called_once()
+            mock_prune_oci.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
