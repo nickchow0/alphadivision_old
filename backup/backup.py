@@ -98,3 +98,38 @@ def upload_to_oci(bucket: str, namespace: str, object_name: str, file_path: str)
     except Exception as exc:
         log.error("Exception during OCI upload: %s", exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Pruning
+# ---------------------------------------------------------------------------
+
+def prune_local_backups(
+    backup_dir: str,
+    retention_days: int = RETENTION_DAYS,
+    today: "date | None" = None,
+) -> list:
+    """
+    Delete local .sql.gz backup files older than retention_days.
+    Filenames must match `alphadivision-YYYYMMDD.sql.gz`.
+    Returns list of deleted filenames (not full paths).
+    """
+    if today is None:
+        today = date.today()
+    cutoff = today - timedelta(days=retention_days)
+    deleted = []
+    backup_path = Path(backup_dir)
+    if not backup_path.exists():
+        return []
+    for f in backup_path.glob(f"{BACKUP_FILENAME_PREFIX}*.sql.gz"):
+        stem = f.stem  # e.g. "alphadivision-20260516.sql" (.gz stripped by pathlib)
+        date_part = stem.removeprefix(BACKUP_FILENAME_PREFIX).removesuffix(".sql")
+        try:
+            file_date = datetime.strptime(date_part, "%Y%m%d").date()
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            log.info("Deleting local backup: %s", f.name)
+            f.unlink()
+            deleted.append(f.name)
+    return deleted

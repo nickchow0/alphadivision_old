@@ -108,5 +108,69 @@ class TestUploadToOci(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestPruneLocalBackups(unittest.TestCase):
+    def _make_backup_files(self, tmpdir: str, names: list) -> list:
+        paths = []
+        for name in names:
+            p = os.path.join(tmpdir, name)
+            with open(p, "w") as f:
+                f.write("dummy")
+            paths.append(p)
+        return paths
+
+    def test_deletes_files_older_than_retention(self):
+        import tempfile
+        from backup.backup import prune_local_backups
+        from datetime import date, timedelta
+
+        today = date(2026, 5, 16)
+        old_date = today - timedelta(days=31)
+        keep_date = today - timedelta(days=10)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_name = f"alphadivision-{old_date.strftime('%Y%m%d')}.sql.gz"
+            keep_name = f"alphadivision-{keep_date.strftime('%Y%m%d')}.sql.gz"
+            self._make_backup_files(tmpdir, [old_name, keep_name])
+
+            deleted = prune_local_backups(tmpdir, retention_days=30, today=today)
+
+        self.assertEqual(deleted, [old_name])
+
+    def test_keeps_files_within_retention(self):
+        import tempfile
+        from backup.backup import prune_local_backups
+        from datetime import date, timedelta
+
+        today = date(2026, 5, 16)
+        keep_date = today - timedelta(days=29)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            keep_name = f"alphadivision-{keep_date.strftime('%Y%m%d')}.sql.gz"
+            self._make_backup_files(tmpdir, [keep_name])
+
+            deleted = prune_local_backups(tmpdir, retention_days=30, today=today)
+
+        self.assertEqual(deleted, [])
+
+    def test_ignores_non_backup_files(self):
+        import tempfile
+        from backup.backup import prune_local_backups
+        from datetime import date
+
+        today = date(2026, 5, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_backup_files(tmpdir, ["somefile.txt"])
+            deleted = prune_local_backups(tmpdir, retention_days=30, today=today)
+
+        self.assertEqual(deleted, [])
+
+    def test_returns_empty_list_for_nonexistent_dir(self):
+        from backup.backup import prune_local_backups
+        from datetime import date
+        deleted = prune_local_backups("/nonexistent/path", retention_days=30, today=date(2026, 5, 16))
+        self.assertEqual(deleted, [])
+
+
 if __name__ == "__main__":
     unittest.main()
