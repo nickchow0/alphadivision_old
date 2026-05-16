@@ -64,3 +64,47 @@ def send_email(
     )
     sg = SendGridAPIClient(api_key)
     sg.send(message)
+
+
+# ---------------------------------------------------------------------------
+# Redis state helpers
+# ---------------------------------------------------------------------------
+
+def get_heartbeat_ttl(r: redis.Redis, service: str) -> int:
+    """Return TTL of heartbeat key. <= 0 means service is considered down."""
+    return r.ttl(f"heartbeat:{service}")
+
+
+def get_alert_state(r: redis.Redis, service: str) -> str | None:
+    """Return alert state string ('alerted', 'critical') or None."""
+    val = r.get(f"watchdog:alerted:{service}")
+    if val is None:
+        return None
+    return val.decode() if isinstance(val, bytes) else val
+
+
+def set_alert_state(r: redis.Redis, service: str, state: str) -> None:
+    """Persist alert state with a 1-hour TTL."""
+    r.setex(f"watchdog:alerted:{service}", ALERT_WINDOW, state)
+
+
+def clear_service_state(r: redis.Redis, service: str) -> None:
+    """Delete alert state and restart count keys for a service."""
+    r.delete(f"watchdog:alerted:{service}")
+    r.delete(f"watchdog:restarts:{service}")
+
+
+def get_restart_count(r: redis.Redis, service: str) -> int:
+    """Return current restart attempt count (0 if key does not exist)."""
+    val = r.get(f"watchdog:restarts:{service}")
+    if val is None:
+        return 0
+    return int(val)
+
+
+def increment_restart_count(r: redis.Redis, service: str) -> int:
+    """Increment restart count; set 1-hour TTL on first increment. Returns new count."""
+    new_count = r.incr(f"watchdog:restarts:{service}")
+    if new_count == 1:
+        r.expire(f"watchdog:restarts:{service}", RESTART_WINDOW)
+    return new_count

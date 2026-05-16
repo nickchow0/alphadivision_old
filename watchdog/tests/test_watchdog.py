@@ -48,5 +48,85 @@ class TestSendEmail(unittest.TestCase):
         mock_sg.send.assert_called_once_with(mock_mail)
 
 
+class TestRedisHelpers(unittest.TestCase):
+    def _make_redis(self):
+        return MagicMock()
+
+    def test_get_heartbeat_ttl_returns_positive_when_alive(self):
+        from watchdog.watchdog import get_heartbeat_ttl
+        r = self._make_redis()
+        r.ttl.return_value = 45
+        result = get_heartbeat_ttl(r, "data")
+        r.ttl.assert_called_once_with("heartbeat:data")
+        self.assertEqual(result, 45)
+
+    def test_get_heartbeat_ttl_returns_negative_when_missing(self):
+        from watchdog.watchdog import get_heartbeat_ttl
+        r = self._make_redis()
+        r.ttl.return_value = -2  # key does not exist
+        result = get_heartbeat_ttl(r, "data")
+        self.assertEqual(result, -2)
+
+    def test_get_alert_state_returns_none_when_missing(self):
+        from watchdog.watchdog import get_alert_state
+        r = self._make_redis()
+        r.get.return_value = None
+        result = get_alert_state(r, "data")
+        r.get.assert_called_once_with("watchdog:alerted:data")
+        self.assertIsNone(result)
+
+    def test_get_alert_state_returns_decoded_string(self):
+        from watchdog.watchdog import get_alert_state
+        r = self._make_redis()
+        r.get.return_value = b"alerted"
+        result = get_alert_state(r, "data")
+        self.assertEqual(result, "alerted")
+
+    def test_set_alert_state_uses_setex(self):
+        from watchdog.watchdog import set_alert_state
+        r = self._make_redis()
+        set_alert_state(r, "data", "critical")
+        r.setex.assert_called_once_with("watchdog:alerted:data", 3600, "critical")
+
+    def test_clear_service_state_deletes_both_keys(self):
+        from watchdog.watchdog import clear_service_state
+        r = self._make_redis()
+        clear_service_state(r, "data")
+        r.delete.assert_any_call("watchdog:alerted:data")
+        r.delete.assert_any_call("watchdog:restarts:data")
+        self.assertEqual(r.delete.call_count, 2)
+
+    def test_get_restart_count_returns_zero_when_missing(self):
+        from watchdog.watchdog import get_restart_count
+        r = self._make_redis()
+        r.get.return_value = None
+        result = get_restart_count(r, "data")
+        self.assertEqual(result, 0)
+
+    def test_get_restart_count_returns_int(self):
+        from watchdog.watchdog import get_restart_count
+        r = self._make_redis()
+        r.get.return_value = b"2"
+        result = get_restart_count(r, "data")
+        self.assertEqual(result, 2)
+
+    def test_increment_restart_count_sets_expire_on_first_call(self):
+        from watchdog.watchdog import increment_restart_count
+        r = self._make_redis()
+        r.incr.return_value = 1  # first increment
+        result = increment_restart_count(r, "data")
+        r.incr.assert_called_once_with("watchdog:restarts:data")
+        r.expire.assert_called_once_with("watchdog:restarts:data", 3600)
+        self.assertEqual(result, 1)
+
+    def test_increment_restart_count_skips_expire_on_subsequent_calls(self):
+        from watchdog.watchdog import increment_restart_count
+        r = self._make_redis()
+        r.incr.return_value = 2  # not the first increment
+        result = increment_restart_count(r, "data")
+        r.expire.assert_not_called()
+        self.assertEqual(result, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
