@@ -10,6 +10,7 @@ from stream_reader import read_next_snapshots, ack_snapshot
 from filters import passes_technical_filter
 from claude_client import call_claude, MODEL_HAIKU
 from signal_writer import write_decision, write_signal, CONFIDENCE_THRESHOLD
+from health_server import start_health_server
 
 log = get_logger("analysis")
 
@@ -115,6 +116,7 @@ def main() -> None:
 
     anthropic_api_key = _get_env("ANTHROPIC_API_KEY")
 
+    start_health_server()
     last_heartbeat = 0.0
 
     while True:
