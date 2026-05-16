@@ -53,8 +53,6 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
         passed, reason = passes_technical_filter(snapshot)
         if not passed:
             log.info(f"[{symbol}] Stage 1 filter failed: {reason}")
-            if msg_id:
-                ack_snapshot(msg_id)
             return
 
         log.info(f"[{symbol}] Stage 1 passed — calling Claude ({MODEL_HAIKU})")
@@ -64,8 +62,6 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
             result = call_claude(snapshot, anthropic_api_key, model=MODEL_HAIKU)
         except Exception as exc:
             log.error(f"[{symbol}] Claude call failed: {exc}")
-            if msg_id:
-                ack_snapshot(msg_id)
             return
 
         decision = result["decision"]
@@ -91,8 +87,6 @@ def _process_snapshot(snapshot: dict, anthropic_api_key: str) -> None:
             )
         except Exception as exc:
             log.error(f"[{symbol}] Failed to write decision to DB: {exc}")
-            if msg_id:
-                ack_snapshot(msg_id)
             return
 
         log.info(

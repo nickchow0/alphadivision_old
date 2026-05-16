@@ -75,6 +75,7 @@ def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
         model=model,
         max_tokens=_MAX_TOKENS,
         messages=[{"role": "user", "content": prompt}],
+        timeout=30.0,
     )
 
     raw = message.content[0].text.strip()
