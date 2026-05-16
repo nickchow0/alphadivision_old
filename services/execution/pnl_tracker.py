@@ -2,6 +2,9 @@ from datetime import date
 
 from shared.db import get_conn
 
+# get_conn() auto-commits on context exit (see shared/db.py). No explicit
+# conn.commit() needed; rollback happens automatically on exception.
+
 
 def get_today_pnl(today: date) -> float:
     """
