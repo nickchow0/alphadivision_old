@@ -1,4 +1,5 @@
 from datetime import date as Date
+from typing import Optional
 
 import psycopg2.extras
 
@@ -279,7 +280,7 @@ def get_slippage_stats() -> dict:
     }
 
 
-def get_analysis_stats(days=None) -> dict:
+def get_analysis_stats(days: Optional[int] = None) -> dict:
     """
     Aggregate summary stats for AI decisions within the given time window.
 
@@ -290,11 +291,12 @@ def get_analysis_stats(days=None) -> dict:
         total_decisions: int
         median_confidence: float (0.0 when no decisions)
         pct_above_threshold: float — % of decisions with confidence >= 0.65
-        pct_acted_on: float — % of decisions where acted_on is True
+        pct_acted_on: float — % of decisions (with confidence) where acted_on is True
         haiku_count: int
         sonnet_count: int
     """
     date_clause = "AND decided_at >= NOW() - (%s * INTERVAL '1 day')" if days is not None else ""
+    # date_clause is constructed from a boolean only — never from user input — so f-string is safe.
     sql = f"""
         SELECT
             COUNT(*)                                                          AS total_decisions,

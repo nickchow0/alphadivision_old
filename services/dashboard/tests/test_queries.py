@@ -435,9 +435,11 @@ class TestGetAnalysisStats(unittest.TestCase):
         })
         mock_get_conn.return_value = _make_mock_cm(mock_conn)
         result = get_analysis_stats()
-        for key in ("total_decisions", "median_confidence", "pct_above_threshold",
-                    "pct_acted_on", "haiku_count", "sonnet_count"):
-            self.assertIn(key, result)
+        self.assertEqual(
+            set(result.keys()),
+            {"total_decisions", "median_confidence", "pct_above_threshold",
+             "pct_acted_on", "haiku_count", "sonnet_count"}
+        )
 
     @patch("queries.get_conn")
     def test_median_confidence_is_float(self, mock_get_conn):
@@ -476,6 +478,21 @@ class TestGetAnalysisStats(unittest.TestCase):
         get_analysis_stats(days=None)
         params = mock_cur.execute.call_args[0][1]
         self.assertEqual(params, ())
+
+    @patch("queries.get_conn")
+    def test_haiku_and_sonnet_counts_are_ints(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 10,
+            "median_confidence": "0.71",
+            "pct_above_threshold": "70.0",
+            "pct_acted_on": "50.0",
+            "haiku_count": 8,
+            "sonnet_count": 2,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_analysis_stats()
+        self.assertIsInstance(result["haiku_count"], int)
+        self.assertIsInstance(result["sonnet_count"], int)
 
 
 if __name__ == "__main__":
