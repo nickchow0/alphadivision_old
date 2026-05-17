@@ -20,6 +20,7 @@ from queries import (
     get_analysis_stats,
     get_confidence_histogram,
     get_acted_on_rate_by_band,
+    get_win_rate_by_band,
 )
 
 
@@ -578,6 +579,43 @@ class TestGetActedOnRateByBand(unittest.TestCase):
         mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
         mock_get_conn.return_value = _make_mock_cm(mock_conn)
         get_acted_on_rate_by_band(days=90)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertIn(90, params)
+
+
+class TestGetWinRateByBand(unittest.TestCase):
+    @patch("queries.get_conn")
+    def test_returns_empty_list_when_no_closed_trades(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([])
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_win_rate_by_band()
+        self.assertEqual(result, [])
+
+    @patch("queries.get_conn")
+    def test_returns_only_buckets_with_sample_data(self, mock_get_conn):
+        rows = [
+            {"bucket": 14, "label": "65-70%", "sample_size": 5, "wins": 3, "win_rate_pct": "60.0"},
+            {"bucket": 15, "label": "70-75%", "sample_size": 3, "wins": 2, "win_rate_pct": "66.7"},
+        ]
+        mock_conn, mock_cur = _make_mock_conn(rows)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_win_rate_by_band()
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["bucket"], 14)
+
+    @patch("queries.get_conn")
+    def test_win_rate_pct_is_float(self, mock_get_conn):
+        rows = [{"bucket": 14, "label": "65-70%", "sample_size": 5, "wins": 3, "win_rate_pct": "60.0"}]
+        mock_conn, mock_cur = _make_mock_conn(rows)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_win_rate_by_band()
+        self.assertIsInstance(result[0]["win_rate_pct"], float)
+
+    @patch("queries.get_conn")
+    def test_passes_days_param_when_provided(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([])
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_win_rate_by_band(days=90)
         params = mock_cur.execute.call_args[0][1]
         self.assertIn(90, params)
 

@@ -423,3 +423,71 @@ def get_acted_on_rate_by_band(days: Optional[int] = None) -> list:
             cur.execute(sql, params)
             rows = list(cur.fetchall())
     return [{**dict(r), "acted_pct": float(r["acted_pct"])} for r in rows]
+
+
+def get_win_rate_by_band(days: Optional[int] = None) -> list:
+    """
+    Return win rate per confidence band for closed trades (matched buy+sell pairs).
+
+    Uses the same LATERAL join pattern as get_trade_stats(): each sell is matched
+    to the most recent filled buy for the same symbol before the sell's filled_at.
+    Safe because the bot holds at most one open position per symbol at a time.
+
+    A trade is a "win" if the sell price exceeds the buy price (i.e., profit > 0).
+
+    Parameters:
+        days: number of days to look back based on decision timestamp (None = all time)
+
+    Returns only buckets where sample_size > 0. Returns [] when no closed trades exist.
+    Each row: {"bucket": int, "label": str, "sample_size": int, "wins": int, "win_rate_pct": float}
+    """
+    # date_clause is constructed from a boolean only — never from user input — so f-string is safe.
+    date_clause = "AND d.decided_at >= NOW() - (%s * INTERVAL '1 day')" if days is not None else ""
+    sql = f"""
+        WITH closed AS (
+            SELECT
+                d.confidence,
+                (s.price - b.price) * s.qty > 0 AS is_win
+            FROM decisions d
+            JOIN signals sig ON sig.decision_id = d.id
+            JOIN trades s ON s.signal_id = sig.id
+                AND s.side = 'sell'
+                AND s.status = 'filled'
+                AND s.filled_at IS NOT NULL
+            JOIN LATERAL (
+                SELECT price FROM trades b
+                WHERE b.symbol    = s.symbol
+                  AND b.side      = 'buy'
+                  AND b.status    = 'filled'
+                  AND b.filled_at IS NOT NULL
+                  AND b.filled_at < s.filled_at
+                ORDER BY b.filled_at DESC
+                LIMIT 1
+            ) b ON true
+            WHERE d.confidence IS NOT NULL
+              {date_clause}
+        ),
+        bucketed AS (
+            SELECT
+                WIDTH_BUCKET(LEAST(confidence::numeric, 0.9999), 0, 1, 20) AS bucket,
+                COUNT(*)                          AS sample_size,
+                COUNT(*) FILTER (WHERE is_win)    AS wins
+            FROM closed
+            GROUP BY bucket
+        )
+        SELECT
+            bucket,
+            (((bucket - 1) * 5)::text || '-' || (bucket * 5)::text || '%') AS label,
+            sample_size,
+            wins,
+            ROUND(100.0 * wins / NULLIF(sample_size, 0), 1)                 AS win_rate_pct
+        FROM bucketed
+        WHERE sample_size > 0
+        ORDER BY bucket
+    """
+    params = (days,) if days is not None else ()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = list(cur.fetchall())
+    return [{**dict(r), "win_rate_pct": float(r["win_rate_pct"] or 0)} for r in rows]
