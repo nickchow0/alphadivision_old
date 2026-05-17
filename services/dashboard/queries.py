@@ -377,3 +377,49 @@ def get_confidence_histogram(days: Optional[int] = None) -> list:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             return list(cur.fetchall())
+
+
+def get_acted_on_rate_by_band(days: Optional[int] = None) -> list:
+    """
+    Return the acted-on rate per confidence band (20 buckets of 5%).
+
+    Always returns exactly 20 rows including buckets with zero decisions.
+    acted_pct is 0.0 when total == 0 (CASE handles this in SQL).
+
+    Parameters:
+        days: number of days to look back (None = all time)
+
+    Each row: {"bucket": int, "label": str, "total": int, "acted": int, "acted_pct": float}
+    """
+    # date_clause is constructed from a boolean only — never from user input — so f-string is safe.
+    date_clause = "AND decided_at >= NOW() - (%s * INTERVAL '1 day')" if days is not None else ""
+    sql = f"""
+        WITH buckets AS (
+            SELECT
+                WIDTH_BUCKET(LEAST(confidence::numeric, 0.9999), 0, 1, 20) AS bucket,
+                COUNT(*)                           AS total,
+                COUNT(*) FILTER (WHERE acted_on)   AS acted
+            FROM decisions
+            WHERE confidence IS NOT NULL
+              {date_clause}
+            GROUP BY bucket
+        )
+        SELECT
+            s.n                                                              AS bucket,
+            (((s.n - 1) * 5)::text || '-' || (s.n * 5)::text || '%')       AS label,
+            COALESCE(b.total, 0)                                             AS total,
+            COALESCE(b.acted, 0)                                             AS acted,
+            CASE
+                WHEN COALESCE(b.total, 0) = 0 THEN 0.0
+                ELSE ROUND(100.0 * b.acted / b.total, 1)
+            END                                                              AS acted_pct
+        FROM generate_series(1, 20) s(n)
+        LEFT JOIN buckets b ON b.bucket = s.n
+        ORDER BY s.n
+    """
+    params = (days,) if days is not None else ()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = list(cur.fetchall())
+    return [{**dict(r), "acted_pct": float(r["acted_pct"])} for r in rows]

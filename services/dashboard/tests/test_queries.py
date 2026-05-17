@@ -19,6 +19,7 @@ from queries import (
     get_trade_stats,
     get_analysis_stats,
     get_confidence_histogram,
+    get_acted_on_rate_by_band,
 )
 
 
@@ -540,6 +541,45 @@ class TestGetConfidenceHistogram(unittest.TestCase):
         get_confidence_histogram(days=None)
         params = mock_cur.execute.call_args[0][1]
         self.assertEqual(params, ())
+
+
+class TestGetActedOnRateByBand(unittest.TestCase):
+    def _make_20_rows(self):
+        return [
+            {"bucket": i, "label": f"{(i-1)*5}-{i*5}%", "total": 0, "acted": 0, "acted_pct": 0}
+            for i in range(1, 21)
+        ]
+
+    @patch("queries.get_conn")
+    def test_returns_20_rows(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_acted_on_rate_by_band()
+        self.assertEqual(len(result), 20)
+
+    @patch("queries.get_conn")
+    def test_acted_pct_is_float(self, mock_get_conn):
+        rows = [{"bucket": 14, "label": "65-70%", "total": 10, "acted": 7, "acted_pct": "70.0"}]
+        mock_conn, mock_cur = _make_mock_conn(rows)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_acted_on_rate_by_band()
+        self.assertIsInstance(result[0]["acted_pct"], float)
+
+    @patch("queries.get_conn")
+    def test_zero_total_gives_zero_pct(self, mock_get_conn):
+        rows = [{"bucket": 5, "label": "20-25%", "total": 0, "acted": 0, "acted_pct": 0}]
+        mock_conn, mock_cur = _make_mock_conn(rows)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_acted_on_rate_by_band()
+        self.assertEqual(result[0]["acted_pct"], 0.0)
+
+    @patch("queries.get_conn")
+    def test_passes_days_param_when_provided(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_acted_on_rate_by_band(days=90)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertIn(90, params)
 
 
 if __name__ == "__main__":
