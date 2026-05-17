@@ -335,3 +335,45 @@ def get_analysis_stats(days: Optional[int] = None) -> dict:
         "haiku_count":         int(row.get("haiku_count") or 0),
         "sonnet_count":        int(row.get("sonnet_count") or 0),
     }
+
+
+def get_confidence_histogram(days: Optional[int] = None) -> list:
+    """
+    Return decision counts in 20 confidence buckets of 5% each (0-5%, 5-10%, ..., 95-100%).
+
+    Always returns exactly 20 rows including zero-count buckets (via generate_series left join).
+    Buckets 1-13 cover 0-65% (below the 0.65 acting threshold); buckets 14-20 cover 65-100%.
+
+    LEAST(confidence::numeric, 0.9999) guards against confidence=1.0 producing an out-of-range
+    bucket 21 from WIDTH_BUCKET.
+
+    Parameters:
+        days: number of days to look back (None = all time)
+
+    Each row: {"bucket": int (1-20), "label": str (e.g. "60-65%"), "count": int}
+    """
+    # date_clause is constructed from a boolean only — never from user input — so f-string is safe.
+    date_clause = "AND decided_at >= NOW() - (%s * INTERVAL '1 day')" if days is not None else ""
+    sql = f"""
+        WITH buckets AS (
+            SELECT
+                WIDTH_BUCKET(LEAST(confidence::numeric, 0.9999), 0, 1, 20) AS bucket,
+                COUNT(*) AS count
+            FROM decisions
+            WHERE confidence IS NOT NULL
+              {date_clause}
+            GROUP BY bucket
+        )
+        SELECT
+            s.n                                                              AS bucket,
+            (((s.n - 1) * 5)::text || '-' || (s.n * 5)::text || '%')       AS label,
+            COALESCE(b.count, 0)                                             AS count
+        FROM generate_series(1, 20) s(n)
+        LEFT JOIN buckets b ON b.bucket = s.n
+        ORDER BY s.n
+    """
+    params = (days,) if days is not None else ()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall())

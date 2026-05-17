@@ -18,6 +18,7 @@ from queries import (
     get_trade_activity,
     get_trade_stats,
     get_analysis_stats,
+    get_confidence_histogram,
 )
 
 
@@ -493,6 +494,52 @@ class TestGetAnalysisStats(unittest.TestCase):
         result = get_analysis_stats()
         self.assertIsInstance(result["haiku_count"], int)
         self.assertIsInstance(result["sonnet_count"], int)
+
+
+class TestGetConfidenceHistogram(unittest.TestCase):
+    def _make_20_rows(self):
+        return [
+            {"bucket": i, "label": f"{(i-1)*5}-{i*5}%", "count": 0}
+            for i in range(1, 21)
+        ]
+
+    @patch("queries.get_conn")
+    def test_always_returns_20_rows(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_confidence_histogram()
+        self.assertEqual(len(result), 20)
+
+    @patch("queries.get_conn")
+    def test_bucket_13_label_is_60_65(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_confidence_histogram()
+        # bucket 13 (index 12) covers 60-65%
+        self.assertEqual(result[12]["label"], "60-65%")
+
+    @patch("queries.get_conn")
+    def test_bucket_14_label_is_65_70(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_confidence_histogram()
+        self.assertEqual(result[13]["label"], "65-70%")
+
+    @patch("queries.get_conn")
+    def test_passes_days_param_when_provided(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_confidence_histogram(days=30)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertIn(30, params)
+
+    @patch("queries.get_conn")
+    def test_no_params_when_days_is_none(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn(self._make_20_rows())
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_confidence_histogram(days=None)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertEqual(params, ())
 
 
 if __name__ == "__main__":
