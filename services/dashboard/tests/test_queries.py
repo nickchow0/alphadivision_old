@@ -384,6 +384,25 @@ class TestGetTradeStats(unittest.TestCase):
         call_kwargs = mock_conn.cursor.call_args[1]
         self.assertEqual(call_kwargs["cursor_factory"], psycopg2.extras.RealDictCursor)
 
+    @patch("queries.get_conn")
+    def test_break_even_trade_not_counted_as_loss(self, mock_get_conn):
+        # A trade where sell_price == buy_price has pnl == 0
+        # It must not be counted as a loss (pnl < 0 is the loss filter)
+        row = {
+            "total_closed": 1, "wins": 0, "losses": 0,
+            "win_rate_pct": "0.0",
+            "avg_pnl": "0.00", "best_trade": "0.00",
+            "worst_trade": "0.00", "avg_holding_hours": "8.0",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_trade_stats()
+        self.assertEqual(result["total_closed"], 1)
+        self.assertEqual(result["wins"], 0)
+        self.assertEqual(result["losses"], 0)   # break-even ≠ loss
+        self.assertAlmostEqual(result["win_rate_pct"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -178,17 +178,19 @@ def get_trade_stats() -> dict:
                 WHERE b.symbol    = s.symbol
                   AND b.side      = 'buy'
                   AND b.status    = 'filled'
+                  AND b.filled_at IS NOT NULL
                   AND b.filled_at < s.filled_at
                 ORDER BY b.filled_at DESC
                 LIMIT 1
             ) b ON true
-            WHERE s.side   = 'sell'
-              AND s.status = 'filled'
+            WHERE s.side        = 'sell'
+              AND s.status      = 'filled'
+              AND s.filled_at   IS NOT NULL
         )
         SELECT
             COUNT(*)                                                              AS total_closed,
             COUNT(*) FILTER (WHERE pnl > 0)                                      AS wins,
-            COUNT(*) FILTER (WHERE pnl <= 0)                                     AS losses,
+            COUNT(*) FILTER (WHERE pnl < 0)                                      AS losses,
             ROUND(
                 100.0 * COUNT(*) FILTER (WHERE pnl > 0)
                 / NULLIF(COUNT(*), 0),
@@ -204,9 +206,6 @@ def get_trade_stats() -> dict:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql)
             row = cur.fetchone()
-
-    if row is None:
-        row = {}
 
     def _f(key: str, default: float = 0.0) -> float:
         val = row.get(key)
