@@ -57,8 +57,8 @@ def test_json_formatter_includes_exception_info():
     assert "ValueError" in parsed["exception"]
 
 
-def test_get_logger_respects_log_level_env(monkeypatch):
-    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+def test_get_logger_respects_log_level_from_config():
     import logging
-    logger = get_logger("env-test-service")
+    with patch("shared.logger.load_config", return_value={"log_level": "DEBUG"}):
+        logger = get_logger("config-test-service")
     assert logger.level == logging.DEBUG

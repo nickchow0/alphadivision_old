@@ -1,7 +1,8 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
+
+from shared.config import load_config
 
 
 class JSONFormatter(logging.Formatter):
@@ -28,6 +29,7 @@ def get_logger(service_name: str) -> logging.Logger:
         handler.setFormatter(JSONFormatter(service_name))
         logger.addHandler(handler)
         logger.propagate = False
-    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    cfg = load_config()
+    level = cfg.get("log_level", "INFO").upper()
     logger.setLevel(getattr(logging, level, logging.INFO))
     return logger

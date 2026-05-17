@@ -1,6 +1,7 @@
-import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from shared.config import load_config
 
 ET = ZoneInfo("America/New_York")
 
@@ -26,27 +27,7 @@ def is_market_open() -> bool:
     return open_time <= now < close_time
 
 
-_DEFAULT_WATCHLIST = ["AAPL", "MSFT", "GOOGL"]
-
-
 def get_watchlist() -> list[str]:
-    """Return the list of symbols from watchlist.txt (one symbol per line).
-
-    Falls back to the WATCHLIST env var (comma-separated) for backward
-    compatibility, then to a hardcoded default if neither is set.
-    """
-    try:
-        path = os.environ.get("WATCHLIST_FILE", "/app/watchlist.txt")
-        with open(path) as f:
-            symbols = [line.strip().upper() for line in f if line.strip() and not line.startswith("#")]
-        if symbols:
-            return symbols
-    except FileNotFoundError:
-        pass
-
-    # Fallback: WATCHLIST env var
-    raw = os.getenv("WATCHLIST", "")
-    if raw.strip():
-        return [s.strip() for s in raw.split(",") if s.strip()]
-
-    return _DEFAULT_WATCHLIST
+    """Return the list of ticker symbols from config.toml."""
+    cfg = load_config()
+    return cfg.get("watchlist", ["AAPL", "MSFT", "GOOGL"])

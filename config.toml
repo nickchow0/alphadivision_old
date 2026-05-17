@@ -1,0 +1,5 @@
+# AlphaDivision — Non-secret configuration
+# Secrets (API keys, passwords, webhook URLs) belong in .env
+
+log_level = "INFO"
+watchlist  = ["AAPL", "MSFT", "GOOGL"]

@@ -1,4 +1,3 @@
-import os
 import pytest
 from datetime import datetime
 from unittest.mock import patch
@@ -80,37 +79,33 @@ def test_market_closed_at_exactly_4pm():
 # get_watchlist() tests
 # ---------------------------------------------------------------------------
 
-def test_get_watchlist_reads_from_file(tmp_path):
-    wl = tmp_path / "watchlist.txt"
-    wl.write_text("TSLA\nNVDA\nAMD\n")
-    with patch.dict(os.environ, {"WATCHLIST_FILE": str(wl), "WATCHLIST": ""}):
+def test_get_watchlist_returns_symbols_from_config():
+    with patch("market.load_config", return_value={"watchlist": ["TSLA", "NVDA", "AMD"]}):
         result = get_watchlist()
     assert result == ["TSLA", "NVDA", "AMD"]
 
 
-def test_get_watchlist_ignores_comments_and_blank_lines(tmp_path):
-    wl = tmp_path / "watchlist.txt"
-    wl.write_text("# My watchlist\nAAPL\n\nMSFT\n")
-    with patch.dict(os.environ, {"WATCHLIST_FILE": str(wl), "WATCHLIST": ""}):
-        result = get_watchlist()
-    assert result == ["AAPL", "MSFT"]
-
-
-def test_get_watchlist_falls_back_to_env_var_when_file_missing():
-    with patch.dict(os.environ, {"WATCHLIST_FILE": "/nonexistent/watchlist.txt", "WATCHLIST": "TSLA,NVDA,AMD"}):
-        result = get_watchlist()
-    assert result == ["TSLA", "NVDA", "AMD"]
-
-
-def test_get_watchlist_falls_back_to_default_when_file_and_env_missing():
-    with patch.dict(os.environ, {"WATCHLIST_FILE": "/nonexistent/watchlist.txt", "WATCHLIST": ""}, clear=False):
+def test_get_watchlist_falls_back_to_default_when_key_missing():
+    with patch("market.load_config", return_value={}):
         result = get_watchlist()
     assert result == ["AAPL", "MSFT", "GOOGL"]
 
 
-def test_get_watchlist_uppercases_symbols(tmp_path):
-    wl = tmp_path / "watchlist.txt"
-    wl.write_text("aapl\nmsft\n")
-    with patch.dict(os.environ, {"WATCHLIST_FILE": str(wl), "WATCHLIST": ""}):
+def test_get_watchlist_returns_single_symbol():
+    with patch("market.load_config", return_value={"watchlist": ["AMZN"]}):
         result = get_watchlist()
-    assert result == ["AAPL", "MSFT"]
+    assert result == ["AMZN"]
+
+
+def test_get_watchlist_preserves_order():
+    symbols = ["GOOGL", "AAPL", "MSFT", "NVDA"]
+    with patch("market.load_config", return_value={"watchlist": symbols}):
+        result = get_watchlist()
+    assert result == symbols
+
+
+def test_get_watchlist_delegates_to_load_config():
+    """Ensure get_watchlist always reads from config (not a stale cache)."""
+    with patch("market.load_config", return_value={"watchlist": ["AAPL"]}) as mock_cfg:
+        get_watchlist()
+    mock_cfg.assert_called_once()
