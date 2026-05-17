@@ -11,14 +11,14 @@ import sys
 from pathlib import Path
 
 # Allow importing notifier.py directly from the alerts service
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "services" / "alerts"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "services" / "alerts"))
 
 from dotenv import load_dotenv
 
 # Load .env — prefer the production path, fall back to local
 env_path = Path("/opt/alphadivision/.env")
 if not env_path.exists():
-    env_path = Path(".env")
+    env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
 
 REQUIRED_VARS = ["SENDGRID_API_KEY", "ALERT_EMAIL_FROM", "ALERT_EMAIL_TO", "DISCORD_WEBHOOK_URL"]
