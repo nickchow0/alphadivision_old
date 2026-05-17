@@ -150,3 +150,75 @@ def get_circuit_breaker_status(today: Date) -> bool:
     if row is None:
         return False
     return bool(row["circuit_breaker_triggered"])
+
+
+def get_trade_stats() -> dict:
+    """
+    Compute aggregate stats for all closed trades (matched buy+sell pairs).
+
+    Each sell is matched with the most recent filled buy for the same symbol
+    before that sell's filled_at (LATERAL join). Safe because the bot holds
+    at most one open position per symbol at a time.
+
+    Returns a dict with keys:
+        total_closed, wins, losses, win_rate_pct,
+        avg_pnl, best_trade, worst_trade, avg_holding_hours
+    All values are floats (win_rate_pct is 0.0 when total_closed == 0).
+    """
+    sql = """
+        WITH pairs AS (
+            SELECT
+                (s.price - b.price) * s.qty  AS pnl,
+                EXTRACT(EPOCH FROM (s.filled_at - b.filled_at)) / 3600.0
+                                              AS holding_hours
+            FROM trades s
+            JOIN LATERAL (
+                SELECT price, filled_at
+                FROM trades b
+                WHERE b.symbol    = s.symbol
+                  AND b.side      = 'buy'
+                  AND b.status    = 'filled'
+                  AND b.filled_at < s.filled_at
+                ORDER BY b.filled_at DESC
+                LIMIT 1
+            ) b ON true
+            WHERE s.side   = 'sell'
+              AND s.status = 'filled'
+        )
+        SELECT
+            COUNT(*)                                                              AS total_closed,
+            COUNT(*) FILTER (WHERE pnl > 0)                                      AS wins,
+            COUNT(*) FILTER (WHERE pnl <= 0)                                     AS losses,
+            ROUND(
+                100.0 * COUNT(*) FILTER (WHERE pnl > 0)
+                / NULLIF(COUNT(*), 0),
+                1
+            )                                                                     AS win_rate_pct,
+            ROUND(COALESCE(AVG(pnl),            0)::numeric, 2)                  AS avg_pnl,
+            ROUND(COALESCE(MAX(pnl),            0)::numeric, 2)                  AS best_trade,
+            ROUND(COALESCE(MIN(pnl),            0)::numeric, 2)                  AS worst_trade,
+            ROUND(COALESCE(AVG(holding_hours),  0)::numeric, 1)                  AS avg_holding_hours
+        FROM pairs
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+
+    if row is None:
+        row = {}
+
+    def _f(key: str, default: float = 0.0) -> float:
+        val = row.get(key)
+        return float(val) if val is not None else default
+
+    return {
+        "total_closed":      int(row.get("total_closed") or 0),
+        "wins":              int(row.get("wins")         or 0),
+        "losses":            int(row.get("losses")       or 0),
+        "win_rate_pct":      _f("win_rate_pct"),
+        "avg_pnl":           _f("avg_pnl"),
+        "best_trade":        _f("best_trade"),
+        "worst_trade":       _f("worst_trade"),
+        "avg_holding_hours": _f("avg_holding_hours"),
+    }

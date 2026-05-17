@@ -16,6 +16,7 @@ from queries import (
     get_circuit_breaker_status,
     get_pnl_history,
     get_trade_activity,
+    get_trade_stats,
 )
 
 
@@ -299,6 +300,89 @@ class TestGetTradeActivity(unittest.TestCase):
         get_trade_activity(days=14)
         params = mock_cur.execute.call_args[0][1]
         self.assertIn(14, params)
+
+
+class TestGetTradeStats(unittest.TestCase):
+    @patch("queries.get_conn")
+    def test_returns_zeros_when_no_closed_trades(self, mock_get_conn):
+        row = {
+            "total_closed": 0, "wins": 0, "losses": 0,
+            "win_rate_pct": None,
+            "avg_pnl": "0.00", "best_trade": "0.00",
+            "worst_trade": "0.00", "avg_holding_hours": "0.0",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_trade_stats()
+        self.assertEqual(result["total_closed"], 0)
+        self.assertEqual(result["wins"], 0)
+        self.assertAlmostEqual(result["win_rate_pct"], 0.0)
+        self.assertAlmostEqual(result["avg_pnl"], 0.0)
+
+    @patch("queries.get_conn")
+    def test_win_rate_pct_is_float(self, mock_get_conn):
+        row = {
+            "total_closed": 4, "wins": 3, "losses": 1,
+            "win_rate_pct": "75.0",
+            "avg_pnl": "42.50", "best_trade": "120.00",
+            "worst_trade": "-30.00", "avg_holding_hours": "18.5",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_trade_stats()
+        self.assertAlmostEqual(result["win_rate_pct"], 75.0)
+        self.assertIsInstance(result["win_rate_pct"], float)
+
+    @patch("queries.get_conn")
+    def test_all_keys_present(self, mock_get_conn):
+        row = {
+            "total_closed": 1, "wins": 1, "losses": 0,
+            "win_rate_pct": "100.0",
+            "avg_pnl": "55.00", "best_trade": "55.00",
+            "worst_trade": "55.00", "avg_holding_hours": "24.0",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_trade_stats()
+        expected_keys = {
+            "total_closed", "wins", "losses", "win_rate_pct",
+            "avg_pnl", "best_trade", "worst_trade", "avg_holding_hours",
+        }
+        self.assertEqual(set(result.keys()), expected_keys)
+
+    @patch("queries.get_conn")
+    def test_negative_values_preserved(self, mock_get_conn):
+        row = {
+            "total_closed": 2, "wins": 0, "losses": 2,
+            "win_rate_pct": "0.0",
+            "avg_pnl": "-75.00", "best_trade": "-50.00",
+            "worst_trade": "-100.00", "avg_holding_hours": "6.0",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_trade_stats()
+        self.assertAlmostEqual(result["worst_trade"], -100.0)
+        self.assertAlmostEqual(result["avg_pnl"], -75.0)
+        self.assertAlmostEqual(result["win_rate_pct"], 0.0)
+
+    @patch("queries.get_conn")
+    def test_uses_realdict_cursor(self, mock_get_conn):
+        row = {
+            "total_closed": 0, "wins": 0, "losses": 0,
+            "win_rate_pct": None,
+            "avg_pnl": "0.00", "best_trade": "0.00",
+            "worst_trade": "0.00", "avg_holding_hours": "0.0",
+        }
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row=row)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        get_trade_stats()
+        call_kwargs = mock_conn.cursor.call_args[1]
+        self.assertEqual(call_kwargs["cursor_factory"], psycopg2.extras.RealDictCursor)
 
 
 if __name__ == "__main__":
