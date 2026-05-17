@@ -188,7 +188,7 @@ def main() -> None:
     log.info("Execution Service starting")
 
     alpaca_key = _get_env("ALPACA_API_KEY")
-    alpaca_secret = _get_env("ALPACA_API_SECRET")
+    alpaca_secret = _get_env("ALPACA_SECRET_KEY")
     alpaca_base_url = _get_env("ALPACA_BASE_URL")
 
     api = tradeapi.REST(alpaca_key, alpaca_secret, alpaca_base_url)
