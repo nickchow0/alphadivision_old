@@ -43,6 +43,22 @@ MOCK_TRADE_STATS = {
     "worst_trade": 0.0,
     "avg_holding_hours": 0.0,
 }
+MOCK_ANALYSIS_STATS = {
+    "total_decisions": 0,
+    "median_confidence": 0.0,
+    "pct_above_threshold": 0.0,
+    "pct_acted_on": 0.0,
+    "haiku_count": 0,
+    "sonnet_count": 0,
+}
+MOCK_HISTOGRAM = [
+    {"bucket": i, "label": f"{(i-1)*5}-{i*5}%", "count": 0}
+    for i in range(1, 21)
+]
+MOCK_ACTED_ON_RATE = [
+    {"bucket": i, "label": f"{(i-1)*5}-{i*5}%", "total": 0, "acted": 0, "acted_pct": 0.0}
+    for i in range(1, 21)
+]
 
 
 class TestFlaskRoutes(unittest.TestCase):
@@ -62,6 +78,10 @@ class TestFlaskRoutes(unittest.TestCase):
             patch("queries.get_pnl_history", return_value=[]),
             patch("queries.get_trade_activity", return_value=[]),
             patch("main.load_config", return_value={"paper_balance": 100000.0}),
+            patch("main.get_analysis_stats", return_value=MOCK_ANALYSIS_STATS),
+            patch("main.get_confidence_histogram", return_value=MOCK_HISTOGRAM),
+            patch("main.get_acted_on_rate_by_band", return_value=MOCK_ACTED_ON_RATE),
+            patch("main.get_win_rate_by_band", return_value=[]),
         ]
         for p in self.patches:
             p.start()
@@ -115,6 +135,22 @@ class TestFlaskRoutes(unittest.TestCase):
     def test_watchlist_contains_symbol(self):
         resp = self.client.get("/watchlist")
         self.assertIn(b"AAPL", resp.data)
+
+    def test_analysis_returns_200(self):
+        resp = self.client.get("/analysis")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_api_analysis_returns_200(self):
+        resp = self.client.get("/api/analysis?days=30")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("stats", data)
+
+    def test_api_analysis_invalid_days_falls_back_to_30(self):
+        resp = self.client.get("/api/analysis?days=bogus")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("stats", data)
 
 
 if __name__ == "__main__":

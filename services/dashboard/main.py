@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "/app")
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from shared.config import load_config
 from shared.logger import get_logger
 
@@ -22,6 +22,10 @@ from queries import (
     get_pnl_history,
     get_trade_activity,
     get_trade_stats,
+    get_analysis_stats,
+    get_confidence_histogram,
+    get_acted_on_rate_by_band,
+    get_win_rate_by_band,
 )
 from service_status import get_service_statuses
 
@@ -140,6 +144,51 @@ def api_charts():
         portfolio_values=json.loads(raw["portfolio_values"]),
         trade_dates=json.loads(raw["trade_dates"]),
         trade_counts=json.loads(raw["trade_counts"]),
+    )
+
+
+def _analysis_data(days) -> dict:
+    """Build template variables for the /analysis page."""
+    stats = get_analysis_stats(days)
+    histogram = get_confidence_histogram(days)
+    acted_on_rate = get_acted_on_rate_by_band(days)
+    win_rate = get_win_rate_by_band(days)
+    return dict(
+        stats=stats,
+        hist_labels=json.dumps([r["label"] for r in histogram]),
+        hist_counts=json.dumps([int(r["count"]) for r in histogram]),
+        acted_pcts=json.dumps([float(r["acted_pct"]) for r in acted_on_rate]),
+        win_labels=json.dumps([r["label"] for r in win_rate]),
+        win_rates=json.dumps([float(r["win_rate_pct"]) for r in win_rate]),
+    )
+
+
+@app.route("/analysis")
+def analysis():
+    days = 30
+    return render_template("analysis.html", active_days=days, **_analysis_data(days))
+
+
+@app.route("/api/analysis")
+def api_analysis():
+    raw = request.args.get("days", "30")
+    if raw == "all":
+        days = None
+    elif raw in ("30", "90"):
+        days = int(raw)
+    else:
+        days = 30
+    stats = get_analysis_stats(days)
+    histogram = get_confidence_histogram(days)
+    acted_on_rate = get_acted_on_rate_by_band(days)
+    win_rate = get_win_rate_by_band(days)
+    return jsonify(
+        stats=stats,
+        hist_labels=[r["label"] for r in histogram],
+        hist_counts=[int(r["count"]) for r in histogram],
+        acted_pcts=[float(r["acted_pct"]) for r in acted_on_rate],
+        win_labels=[r["label"] for r in win_rate],
+        win_rates=[float(r["win_rate_pct"]) for r in win_rate],
     )
 
 
