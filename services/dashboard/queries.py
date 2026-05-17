@@ -277,3 +277,59 @@ def get_slippage_stats() -> dict:
         "total_slippage":    _f("total_slippage"),
         "avg_slippage_pct":  _f("avg_slippage_pct"),
     }
+
+
+def get_analysis_stats(days=None) -> dict:
+    """
+    Aggregate summary stats for AI decisions within the given time window.
+
+    Parameters:
+        days: number of days to look back (None = all time, omits date filter)
+
+    Returns a dict with keys:
+        total_decisions: int
+        median_confidence: float (0.0 when no decisions)
+        pct_above_threshold: float — % of decisions with confidence >= 0.65
+        pct_acted_on: float — % of decisions where acted_on is True
+        haiku_count: int
+        sonnet_count: int
+    """
+    date_clause = "AND decided_at >= NOW() - (%s * INTERVAL '1 day')" if days is not None else ""
+    sql = f"""
+        SELECT
+            COUNT(*)                                                          AS total_decisions,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY confidence::numeric) AS median_confidence,
+            ROUND(
+                100.0 * COUNT(*) FILTER (WHERE confidence::numeric >= 0.65)
+                / NULLIF(COUNT(*), 0),
+                1
+            )                                                                 AS pct_above_threshold,
+            ROUND(
+                100.0 * COUNT(*) FILTER (WHERE acted_on)
+                / NULLIF(COUNT(*), 0),
+                1
+            )                                                                 AS pct_acted_on,
+            COUNT(*) FILTER (WHERE model LIKE '%haiku%')                      AS haiku_count,
+            COUNT(*) FILTER (WHERE model LIKE '%sonnet%')                     AS sonnet_count
+        FROM decisions
+        WHERE confidence IS NOT NULL
+          {date_clause}
+    """
+    params = (days,) if days is not None else ()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+
+    def _f(key: str) -> float:
+        val = row.get(key)
+        return float(val) if val is not None else 0.0
+
+    return {
+        "total_decisions":     int(row.get("total_decisions") or 0),
+        "median_confidence":   _f("median_confidence"),
+        "pct_above_threshold": _f("pct_above_threshold"),
+        "pct_acted_on":        _f("pct_acted_on"),
+        "haiku_count":         int(row.get("haiku_count") or 0),
+        "sonnet_count":        int(row.get("sonnet_count") or 0),
+    }

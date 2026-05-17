@@ -17,6 +17,7 @@ from queries import (
     get_pnl_history,
     get_trade_activity,
     get_trade_stats,
+    get_analysis_stats,
 )
 
 
@@ -402,6 +403,79 @@ class TestGetTradeStats(unittest.TestCase):
         self.assertEqual(result["wins"], 0)
         self.assertEqual(result["losses"], 0)   # break-even ≠ loss
         self.assertAlmostEqual(result["win_rate_pct"], 0.0)
+
+
+class TestGetAnalysisStats(unittest.TestCase):
+    @patch("queries.get_conn")
+    def test_returns_zeros_when_no_decisions(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 0,
+            "median_confidence": None,
+            "pct_above_threshold": None,
+            "pct_acted_on": None,
+            "haiku_count": 0,
+            "sonnet_count": 0,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_analysis_stats()
+        self.assertEqual(result["total_decisions"], 0)
+        self.assertEqual(result["median_confidence"], 0.0)
+        self.assertEqual(result["pct_above_threshold"], 0.0)
+        self.assertEqual(result["pct_acted_on"], 0.0)
+
+    @patch("queries.get_conn")
+    def test_all_keys_present(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 50,
+            "median_confidence": "0.72",
+            "pct_above_threshold": "68.0",
+            "pct_acted_on": "45.0",
+            "haiku_count": 40,
+            "sonnet_count": 10,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_analysis_stats()
+        for key in ("total_decisions", "median_confidence", "pct_above_threshold",
+                    "pct_acted_on", "haiku_count", "sonnet_count"):
+            self.assertIn(key, result)
+
+    @patch("queries.get_conn")
+    def test_median_confidence_is_float(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 10,
+            "median_confidence": "0.71",
+            "pct_above_threshold": "70.0",
+            "pct_acted_on": "50.0",
+            "haiku_count": 8,
+            "sonnet_count": 2,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        result = get_analysis_stats()
+        self.assertIsInstance(result["median_confidence"], float)
+
+    @patch("queries.get_conn")
+    def test_passes_days_param_when_provided(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 0, "median_confidence": None,
+            "pct_above_threshold": None, "pct_acted_on": None,
+            "haiku_count": 0, "sonnet_count": 0,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_analysis_stats(days=30)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertIn(30, params)
+
+    @patch("queries.get_conn")
+    def test_no_params_when_days_is_none(self, mock_get_conn):
+        mock_conn, mock_cur = _make_mock_conn([], fetchone_row={
+            "total_decisions": 0, "median_confidence": None,
+            "pct_above_threshold": None, "pct_acted_on": None,
+            "haiku_count": 0, "sonnet_count": 0,
+        })
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        get_analysis_stats(days=None)
+        params = mock_cur.execute.call_args[0][1]
+        self.assertEqual(params, ())
 
 
 if __name__ == "__main__":
