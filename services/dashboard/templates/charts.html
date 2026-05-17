@@ -2,118 +2,149 @@
 {% block title %} — Charts{% endblock %}
 
 {% block content %}
-<h1>Charts</h1>
+<div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px;">
+  <h1 style="margin-bottom:0">Charts</h1>
+  <p class="refresh-indicator">Updated <span id="last-updated">just now</span></p>
+</div>
 
-<!-- Chart 1: Daily P&L -->
 <div class="chart-card">
-  <h2>Daily P&L</h2>
-  <div class="chart-canvas-wrap">
-    <canvas id="pnlChart"></canvas>
-  </div>
+  <h2>Daily P&amp;L</h2>
+  <div class="chart-canvas-wrap"><canvas id="pnlChart"></canvas></div>
   <p id="pnlEmpty" class="empty-state" style="display:none">No data yet</p>
 </div>
 
-<!-- Chart 2: Cumulative P&L -->
 <div class="chart-card">
-  <h2>Cumulative P&L</h2>
-  <div class="chart-canvas-wrap">
-    <canvas id="cumulativeChart"></canvas>
-  </div>
+  <h2>Cumulative P&amp;L</h2>
+  <div class="chart-canvas-wrap"><canvas id="cumulativeChart"></canvas></div>
   <p id="cumulativeEmpty" class="empty-state" style="display:none">No data yet</p>
 </div>
 
-<!-- Chart 3: Trades per Day -->
 <div class="chart-card">
   <h2>Trades per Day</h2>
-  <div class="chart-canvas-wrap">
-    <canvas id="tradesChart"></canvas>
-  </div>
+  <div class="chart-canvas-wrap"><canvas id="tradesChart"></canvas></div>
   <p id="tradesEmpty" class="empty-state" style="display:none">No data yet</p>
+</div>
+
+<div class="chart-card">
+  <h2>Portfolio Value</h2>
+  <div class="chart-canvas-wrap"><canvas id="portfolioChart"></canvas></div>
+  <p id="portfolioEmpty" class="empty-state" style="display:none">No data yet</p>
 </div>
 
 <script>
 (function () {
-  const sharedScales = {
-    x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
-    y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
-  };
-  const sharedPlugins = { legend: { display: false } };
   const sharedOpts = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: sharedPlugins,
-    scales: sharedScales
+    animation: { duration: 300 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+      y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
+    }
   };
 
-  // --- Daily P&L ---
-  const pnlDates  = {{ pnl_dates | safe }};
-  const pnlValues = {{ pnl_values | safe }};
+  let pnlChart, cumulativeChart, tradesChart, portfolioChart;
 
-  if (pnlValues.length === 0) {
-    document.getElementById('pnlEmpty').style.display = 'block';
-    document.getElementById('pnlChart').style.display = 'none';
-  } else {
-    const pnlColors = pnlValues.map(v => v >= 0 ? '#3fb950' : '#f85149');
-    new Chart(document.getElementById('pnlChart'), {
-      type: 'bar',
-      data: {
-        labels: pnlDates,
-        datasets: [{
-          label: 'Daily P&L ($)',
-          data: pnlValues,
-          backgroundColor: pnlColors,
-        }]
-      },
-      options: sharedOpts
-    });
+  function render(pnlDates, pnlValues, cumulativeValues, portfolioValues, tradeDates, tradeCounts) {
+    const toggle = (canvasId, emptyId, data) => {
+      document.getElementById(canvasId).style.display = data.length ? 'block' : 'none';
+      document.getElementById(emptyId).style.display  = data.length ? 'none'  : 'block';
+    };
+
+    toggle('pnlChart', 'pnlEmpty', pnlValues);
+    if (pnlValues.length) {
+      if (pnlChart) {
+        pnlChart.data.labels = pnlDates;
+        pnlChart.data.datasets[0].data = pnlValues;
+        pnlChart.data.datasets[0].backgroundColor = pnlValues.map(v => v >= 0 ? '#3fb950' : '#f85149');
+        pnlChart.update();
+      } else {
+        pnlChart = new Chart(document.getElementById('pnlChart'), {
+          type: 'bar',
+          data: { labels: pnlDates, datasets: [{ label: 'Daily P&L ($)', data: pnlValues,
+            backgroundColor: pnlValues.map(v => v >= 0 ? '#3fb950' : '#f85149') }] },
+          options: sharedOpts
+        });
+      }
+    }
+
+    toggle('cumulativeChart', 'cumulativeEmpty', cumulativeValues);
+    if (cumulativeValues.length) {
+      if (cumulativeChart) {
+        cumulativeChart.data.labels = pnlDates;
+        cumulativeChart.data.datasets[0].data = cumulativeValues;
+        cumulativeChart.update();
+      } else {
+        cumulativeChart = new Chart(document.getElementById('cumulativeChart'), {
+          type: 'line',
+          data: { labels: pnlDates, datasets: [{ label: 'Cumulative P&L ($)',
+            data: cumulativeValues, borderColor: '#58a6ff',
+            backgroundColor: 'rgba(88,166,255,0.1)', fill: true, tension: 0.2, pointRadius: 3 }] },
+          options: sharedOpts
+        });
+      }
+    }
+
+    toggle('tradesChart', 'tradesEmpty', tradeCounts);
+    if (tradeCounts.length) {
+      if (tradesChart) {
+        tradesChart.data.labels = tradeDates;
+        tradesChart.data.datasets[0].data = tradeCounts;
+        tradesChart.update();
+      } else {
+        tradesChart = new Chart(document.getElementById('tradesChart'), {
+          type: 'bar',
+          data: { labels: tradeDates, datasets: [{ label: 'Filled Trades',
+            data: tradeCounts, backgroundColor: '#58a6ff' }] },
+          options: sharedOpts
+        });
+      }
+    }
+
+    toggle('portfolioChart', 'portfolioEmpty', portfolioValues);
+    if (portfolioValues.length) {
+      if (portfolioChart) {
+        portfolioChart.data.labels = pnlDates;
+        portfolioChart.data.datasets[0].data = portfolioValues;
+        portfolioChart.update();
+      } else {
+        portfolioChart = new Chart(document.getElementById('portfolioChart'), {
+          type: 'line',
+          data: { labels: pnlDates, datasets: [{ label: 'Portfolio Value ($)',
+            data: portfolioValues, borderColor: '#3fb950',
+            backgroundColor: 'rgba(63,185,80,0.1)', fill: true, tension: 0.2, pointRadius: 3 }] },
+          options: sharedOpts
+        });
+      }
+    }
   }
 
-  // --- Cumulative P&L ---
-  const cumulativeValues = {{ cumulative_values | safe }};
+  // Initial render from server-rendered data
+  render(
+    {{ pnl_dates | safe }},
+    {{ pnl_values | safe }},
+    {{ cumulative_values | safe }},
+    {{ portfolio_values | safe }},
+    {{ trade_dates | safe }},
+    {{ trade_counts | safe }}
+  );
 
-  if (cumulativeValues.length === 0) {
-    document.getElementById('cumulativeEmpty').style.display = 'block';
-    document.getElementById('cumulativeChart').style.display = 'none';
-  } else {
-    new Chart(document.getElementById('cumulativeChart'), {
-      type: 'line',
-      data: {
-        labels: pnlDates,
-        datasets: [{
-          label: 'Cumulative P&L ($)',
-          data: cumulativeValues,
-          borderColor: '#58a6ff',
-          backgroundColor: 'rgba(88,166,255,0.1)',
-          fill: true,
-          tension: 0.2,
-          pointRadius: 3,
-        }]
-      },
-      options: sharedOpts
-    });
+  async function refresh() {
+    try {
+      const res = await fetch('/api/charts');
+      if (!res.ok) return;
+      const d = await res.json();
+      render(d.pnl_dates, d.pnl_values, d.cumulative_values, d.portfolio_values, d.trade_dates, d.trade_counts);
+      const now = new Date();
+      document.getElementById('last-updated').textContent =
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      console.warn('Chart refresh failed:', e);
+    }
   }
 
-  // --- Trades per Day ---
-  const tradeDates  = {{ trade_dates | safe }};
-  const tradeCounts = {{ trade_counts | safe }};
-
-  if (tradeCounts.length === 0) {
-    document.getElementById('tradesEmpty').style.display = 'block';
-    document.getElementById('tradesChart').style.display = 'none';
-  } else {
-    new Chart(document.getElementById('tradesChart'), {
-      type: 'bar',
-      data: {
-        labels: tradeDates,
-        datasets: [{
-          label: 'Filled Trades',
-          data: tradeCounts,
-          backgroundColor: '#58a6ff',
-        }]
-      },
-      options: sharedOpts
-    });
-  }
+  setInterval(refresh, 5 * 60_000);
 })();
 </script>
 {% endblock %}

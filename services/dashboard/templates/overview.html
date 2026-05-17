@@ -150,6 +150,14 @@
       <p id="tradesEmpty" class="empty-state" style="display:none">No data yet</p>
     </div>
 
+    <div class="chart-card">
+      <h2>Portfolio Value</h2>
+      <div class="chart-canvas-wrap">
+        <canvas id="portfolioChart"></canvas>
+      </div>
+      <p id="portfolioEmpty" class="empty-state" style="display:none">No data yet</p>
+    </div>
+
   </div>
 </div>
 
@@ -168,9 +176,9 @@
     scales: sharedScales
   };
 
-  let pnlChart, cumulativeChart, tradesChart;
+  let pnlChart, cumulativeChart, tradesChart, portfolioChart;
 
-  function initCharts(pnlDates, pnlValues, cumulativeValues, tradeDates, tradeCounts) {
+  function initCharts(pnlDates, pnlValues, cumulativeValues, portfolioValues, tradeDates, tradeCounts) {
     const showOrHide = (canvasId, emptyId, data) => {
       const isEmpty = data.length === 0;
       document.getElementById(canvasId).style.display = isEmpty ? 'none' : 'block';
@@ -207,6 +215,17 @@
         options: sharedOpts
       });
     }
+
+    showOrHide('portfolioChart', 'portfolioEmpty', portfolioValues);
+    if (portfolioValues.length > 0) {
+      portfolioChart = new Chart(document.getElementById('portfolioChart'), {
+        type: 'line',
+        data: { labels: pnlDates, datasets: [{ label: 'Portfolio Value ($)',
+          data: portfolioValues, borderColor: '#3fb950',
+          backgroundColor: 'rgba(63,185,80,0.1)', fill: true, tension: 0.2, pointRadius: 3 }] },
+        options: sharedOpts
+      });
+    }
   }
 
   function updateCharts(d) {
@@ -230,6 +249,7 @@
     });
     update(cumulativeChart, 'cumulativeChart', 'cumulativeEmpty', d.pnl_dates, d.cumulative_values, null);
     update(tradesChart, 'tradesChart', 'tradesEmpty', d.trade_dates, d.trade_counts, null);
+    update(portfolioChart, 'portfolioChart', 'portfolioEmpty', d.pnl_dates, d.portfolio_values, null);
   }
 
   /* ── Initial chart render from server-rendered data ── */
@@ -237,6 +257,7 @@
     {{ pnl_dates | safe }},
     {{ pnl_values | safe }},
     {{ cumulative_values | safe }},
+    {{ portfolio_values | safe }},
     {{ trade_dates | safe }},
     {{ trade_counts | safe }}
   );

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, "/app")
 
 from flask import Flask, render_template, jsonify
+from shared.config import load_config
 from shared.logger import get_logger
 
 from queries import (
@@ -40,14 +41,17 @@ def _chart_data(days: int = 30) -> dict:
     """Build JSON-encoded chart data shared by overview and charts routes."""
     pnl_history = get_pnl_history(days)
     trade_activity = get_trade_activity(days)
+    paper_balance = float(load_config().get("paper_balance", 100_000.0))
     cumulative, running = [], 0.0
     for row in pnl_history:
         running += float(row["realized_pnl"])
         cumulative.append(round(running, 2))
+    portfolio_values = [round(paper_balance + v, 2) for v in cumulative]
     return dict(
         pnl_dates=json.dumps([str(r["date"]) for r in pnl_history]),
         pnl_values=json.dumps([float(r["realized_pnl"]) for r in pnl_history]),
         cumulative_values=json.dumps(cumulative),
+        portfolio_values=json.dumps(portfolio_values),
         trade_dates=json.dumps([str(r["date"]) for r in trade_activity]),
         trade_counts=json.dumps([int(r["count"]) for r in trade_activity]),
     )
@@ -133,6 +137,7 @@ def api_charts():
         pnl_dates=json.loads(raw["pnl_dates"]),
         pnl_values=json.loads(raw["pnl_values"]),
         cumulative_values=json.loads(raw["cumulative_values"]),
+        portfolio_values=json.loads(raw["portfolio_values"]),
         trade_dates=json.loads(raw["trade_dates"]),
         trade_counts=json.loads(raw["trade_counts"]),
     )

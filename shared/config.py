@@ -9,6 +9,7 @@ except ModuleNotFoundError:
 _DEFAULT_CONFIG: dict = {
     "log_level": "INFO",
     "watchlist": ["AAPL", "MSFT", "GOOGL"],
+    "paper_balance": 100000.0,
 }
 
 

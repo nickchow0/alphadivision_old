@@ -1,5 +1,6 @@
 # AlphaDivision — Non-secret configuration
 # Secrets (API keys, passwords, webhook URLs) belong in .env
 
-log_level = "INFO"
-watchlist  = ["AAPL", "MSFT", "GOOGL"]
+log_level     = "INFO"
+watchlist     = ["AAPL", "MSFT", "GOOGL"]
+paper_balance = 100000.0   # Starting account balance for portfolio value chart

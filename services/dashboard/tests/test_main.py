@@ -58,10 +58,10 @@ class TestFlaskRoutes(unittest.TestCase):
             patch("queries.get_watchlist", return_value=MOCK_WATCHLIST),
             patch("service_status.get_service_statuses", return_value=MOCK_SERVICES),
             patch("queries.get_trade_stats", return_value=MOCK_TRADE_STATS),
-            # _chart_data() (called by overview route) uses these two — must mock them
-            # so tests don't need a real DATABASE_URL
+            # _chart_data() uses these — mock so tests don't need DATABASE_URL or config.toml
             patch("queries.get_pnl_history", return_value=[]),
             patch("queries.get_trade_activity", return_value=[]),
+            patch("main.load_config", return_value={"paper_balance": 100000.0}),
         ]
         for p in self.patches:
             p.start()
