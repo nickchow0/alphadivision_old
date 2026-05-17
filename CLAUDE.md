@@ -4,6 +4,17 @@ This file contains project-specific instructions for Claude when working on this
 
 ---
 
+## Development Workflow
+
+Always use **Subagent-Driven Development** with **TDD** when writing code:
+
+1. Write a plan first (`superpowers:writing-plans`)
+2. Execute via `superpowers:subagent-driven-development` — fresh subagent per task, two-stage review (spec compliance then code quality) after each task
+3. Each subagent follows TDD: write failing tests first, implement, verify tests pass, commit
+
+---
+
+
 ## Diagrams
 
 Always use **Mermaid** for diagrams in README files and documentation. Never use ASCII art or plain text diagrams.
@@ -47,6 +58,29 @@ docker-compose -f docker-compose.test.yml up -d
 pytest tests/integration/
 docker-compose -f docker-compose.test.yml down
 ```
+
+---
+
+## Configuration
+
+**All non-secret configuration lives in `config.toml`** at the project root. Never put non-secret settings in `.env`.
+
+| Type | Where |
+|---|---|
+| API keys, passwords, webhook URLs | `.env` (secrets — never commit) |
+| Log level, watchlist, feature flags, thresholds | `config.toml` (committed, human-readable) |
+
+**Rules:**
+- Read config via `shared.config.load_config()` — never `os.getenv()` for non-secret values
+- `load_config()` merges file values over built-in defaults, so missing keys always fall back gracefully
+- Every Docker service mounts `./config.toml:/app/config.toml:ro` — add this mount when creating a new service
+- Tests mock `load_config` directly (`patch("module.load_config", return_value={...})`) — never patch env vars or the filesystem for config values
+
+**Adding a new config key:**
+1. Add it to `config.toml` with a sensible default value
+2. Add the same default to `_DEFAULT_CONFIG` in `shared/config.py`
+3. Read it with `cfg = load_config(); value = cfg["your_key"]`
+4. Add a test in `shared/tests/test_config.py` covering the new key
 
 ---
 
