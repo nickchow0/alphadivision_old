@@ -119,7 +119,7 @@ def trigger_backtest(strategy_id: int):
         else:
             bars = fetch_bars_yfinance(symbol=symbol, start_date=start, end_date=end)
     except ValueError as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         log.error("Data fetch failed: %s", e)
         return jsonify({"error": "Data fetch failed"}), 500

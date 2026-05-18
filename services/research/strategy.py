@@ -4,7 +4,11 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Callable
 
-_BLOCKED_NAMES = {"__import__", "open", "exec", "eval", "os", "sys", "socket", "subprocess"}
+_BLOCKED_NAMES = {
+    "__import__", "open", "exec", "eval", "os", "sys", "socket", "subprocess",
+    "__builtins__", "getattr", "setattr", "delattr", "globals", "locals",
+    "vars", "dir", "compile", "breakpoint",
+}
 _BLOCKED_MODULES = {"os", "sys", "socket", "subprocess"}
 _EXECUTOR = ThreadPoolExecutor(max_workers=4)
 _TIMEOUT_SECONDS = 2.0
@@ -35,17 +39,27 @@ def compute_code_hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+_SAFE_BUILTINS = {
+    "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+    "enumerate": enumerate, "filter": filter, "float": float, "int": int,
+    "isinstance": isinstance, "len": len, "list": list, "map": map,
+    "max": max, "min": min, "print": print, "range": range, "reversed": reversed,
+    "round": round, "set": set, "sorted": sorted, "str": str, "sum": sum,
+    "tuple": tuple, "type": type, "zip": zip,
+}
+
+
 def load_strategy(code: str) -> Callable:
     """
-    Compile and exec strategy code in a fresh namespace.
+    Compile and exec strategy code in a fresh namespace with restricted builtins.
     Returns the generate_signal function.
     Raises ValueError if generate_signal is not defined.
     """
-    namespace: dict = {}
-    exec(compile(code, "<strategy>", "exec"), namespace)  # noqa: S102
-    if "generate_signal" not in namespace:
+    safe_globals = {"__builtins__": _SAFE_BUILTINS}
+    exec(compile(code, "<strategy>", "exec"), safe_globals)  # noqa: S102
+    if "generate_signal" not in safe_globals:
         raise ValueError("Strategy code must define a 'generate_signal' function")
-    return namespace["generate_signal"]
+    return safe_globals["generate_signal"]
 
 
 def execute_strategy(fn: Callable, snapshot: dict) -> dict:
