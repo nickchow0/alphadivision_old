@@ -1,3 +1,141 @@
 {% extends "base.html" %}
 {% block title %} — Candidates{% endblock %}
-{% block content %}<h1>Candidates</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Candidate Strategies</h1>
+  <span class="muted">{{ candidates|length }} candidate{{ 's' if candidates|length != 1 else '' }}</span>
+</div>
+
+{% if candidates %}
+  {% for c in candidates %}
+  <div class="candidate-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+      <div>
+        <h2 style="font-size:18px; margin-bottom:4px;">{{ c.name }}</h2>
+        <span class="badge badge-candidate">candidate</span>
+        <span class="muted" style="margin-left:8px; font-size:13px;">{{ c.triggered_by }}</span>
+      </div>
+    </div>
+
+    <p style="color:var(--muted); margin-bottom:16px; font-size:13px;">{{ c.hypothesis }}</p>
+
+    <div class="metrics-grid">
+      <div>
+        <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Alpaca (Validation)</h3>
+        <table class="data-table metrics-table" style="font-size:13px;">
+          <tr><th>Sharpe Ratio</th><td>{{ '%.2f'|format(c.sharpe_ratio|float) if c.sharpe_ratio is not none else '—' }}</td></tr>
+          <tr><th>Win Rate</th><td>{{ '%.1f'|format(c.win_rate_pct|float) if c.win_rate_pct is not none else '—' }}%</td></tr>
+          <tr><th>Max Drawdown</th><td>{{ '%.1f'|format(c.max_drawdown_pct|float) if c.max_drawdown_pct is not none else '—' }}%</td></tr>
+          <tr><th>Total Return</th><td>{{ '%.2f'|format(c.total_return_pct|float) if c.total_return_pct is not none else '—' }}%</td></tr>
+          <tr><th>Trades</th><td>{{ c.trade_count if c.trade_count is not none else '—' }}</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">yfinance (Research)</h3>
+        <table class="data-table metrics-table" style="font-size:13px;">
+          <tr><th>Sharpe Ratio</th><td>{{ '%.2f'|format(c.yf_sharpe_ratio|float) if c.yf_sharpe_ratio is not none else '—' }}</td></tr>
+          <tr><th>Win Rate</th><td>{{ '%.1f'|format(c.yf_win_rate_pct|float) if c.yf_win_rate_pct is not none else '—' }}%</td></tr>
+          <tr><th>Max Drawdown</th><td>{{ '%.1f'|format(c.yf_max_drawdown_pct|float) if c.yf_max_drawdown_pct is not none else '—' }}%</td></tr>
+          <tr><th>Total Return</th><td>{{ '%.2f'|format(c.yf_total_return_pct|float) if c.yf_total_return_pct is not none else '—' }}%</td></tr>
+          <tr><th>Trades</th><td>{{ c.yf_trade_count if c.yf_trade_count is not none else '—' }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <details style="margin: 16px 0;">
+      <summary style="cursor:pointer; font-size:13px; color:var(--muted); margin-bottom:8px;">View Strategy Code</summary>
+      <pre class="code-block"><code>{{ c.code }}</code></pre>
+    </details>
+
+    {% if c.alp_run_id %}
+    <div class="chart-container">
+      <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Equity Curve (Alpaca Run)</h3>
+      <canvas id="equity-{{ c.id }}" height="80"></canvas>
+    </div>
+    {% endif %}
+
+    {% if c.critique %}
+    <div style="background:#0a0c12; border:1px solid var(--border); border-radius:6px; padding:16px; margin:16px 0;">
+      <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Claude's Critique</h3>
+      <p style="font-size:13px; line-height:1.6;">{{ c.critique }}</p>
+    </div>
+    {% endif %}
+
+    <div class="candidate-actions">
+      <button class="btn btn-primary" onclick="approveStrategy({{ c.id }})">✓ Approve</button>
+      <button class="btn btn-danger" onclick="retireStrategy({{ c.id }})">✗ Retire</button>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-state">
+  <p>No candidate strategies yet.</p>
+  <p style="margin-top:8px; font-size:13px;">Run an Alpaca validation backtest on a strategy to promote it to candidate status.</p>
+</div>
+{% endif %}
+
+<script>
+{% for c in candidates %}
+{% if c.alp_run_id %}
+(function() {
+  const runId = {{ c.alp_run_id }};
+  const stratId = {{ c.id }};
+  const canvas = document.getElementById('equity-' + stratId);
+  if (!canvas) return;
+
+  fetch('/api/runs/' + runId + '/trades')
+    .then(r => r.json())
+    .then(trades => {
+      if (!trades.length) { canvas.style.display = 'none'; return; }
+      const initial = 100000;
+      let running = initial;
+      const points = [{x: 0, y: initial}];
+      trades.forEach(t => {
+        running += parseFloat(t.pnl || 0);
+        points.push({x: t.exit_bar, y: Math.round(running * 100) / 100});
+      });
+
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Portfolio Value',
+            data: points,
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,0.1)',
+            borderWidth: 2,
+            pointRadius: 2,
+            fill: true,
+            tension: 0.1,
+          }]
+        },
+        options: {
+          responsive: true,
+          parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { type: 'linear', ticks: { color: '#64748b' }, grid: { color: '#1e2230' } },
+            y: { ticks: { color: '#64748b', callback: v => '$' + v.toLocaleString() }, grid: { color: '#1e2230' } },
+          }
+        }
+      });
+    });
+})();
+{% endif %}
+{% endfor %}
+
+function approveStrategy(id) {
+  if (!confirm('Approve this strategy for deployment?')) return;
+  fetch('/api/strategies/' + id + '/approve', { method: 'POST' })
+    .then(r => r.json())
+    .then(() => location.reload());
+}
+
+function retireStrategy(id) {
+  if (!confirm('Retire this strategy?')) return;
+  fetch('/api/strategies/' + id + '/retire', { method: 'POST' })
+    .then(() => location.reload());
+}
+</script>
+{% endblock %}
