@@ -62,3 +62,16 @@ def test_ml_config_defaults():
     assert ml["min_forward_return_pct"] == 1.5
     assert ml["min_examples"] == 30
     assert ml["min_win_rate_pct"] == 45.0
+    assert ml["cron_schedule"] == "0 2 * * *"
+
+
+def test_ml_config_partial_override_deep_merges(tmp_path):
+    """A partial [ml] section in config.toml doesn't wipe other ML defaults."""
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_bytes(b"[ml]\nlookback_days_momentum = 730\n")
+    with patch.dict(os.environ, {"CONFIG_FILE": str(toml_file)}):
+        cfg = load_config()
+    ml = cfg["ml"]
+    assert ml["lookback_days_momentum"] == 730   # overridden
+    assert ml["lookback_days_regime"] == 1825    # still from default
+    assert len(ml["symbols"]) == 26              # still from default

@@ -26,3 +26,4 @@ CREATE TABLE IF NOT EXISTS ml_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ml_bars_symbol_date ON ml_bars(symbol, bar_date);
+CREATE INDEX IF NOT EXISTS idx_ml_runs_ran_at ON ml_runs(ran_at DESC);

@@ -19,4 +19,3 @@ min_forward_return_pct = 1.5
 min_examples           = 30
 min_win_rate_pct       = 45.0
 cron_schedule          = "0 2 * * *"
-research_url           = "http://research:8081"

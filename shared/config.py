@@ -24,7 +24,6 @@ _DEFAULT_CONFIG: dict = {
         "min_examples": 30,
         "min_win_rate_pct": 45.0,
         "cron_schedule": "0 2 * * *",
-        "research_url": "http://research:8081",
     },
 }
 
@@ -40,6 +39,12 @@ def load_config() -> dict:
     try:
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        return {**_DEFAULT_CONFIG, **data}
+        result = dict(_DEFAULT_CONFIG)
+        for key, val in data.items():
+            if isinstance(val, dict) and isinstance(result.get(key), dict):
+                result[key] = {**result[key], **val}
+            else:
+                result[key] = val
+        return result
     except FileNotFoundError:
         return dict(_DEFAULT_CONFIG)
