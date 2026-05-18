@@ -10,6 +10,22 @@ _DEFAULT_CONFIG: dict = {
     "log_level": "INFO",
     "watchlist": ["AAPL", "MSFT", "GOOGL"],
     "paper_balance": 100000.0,
+    "ml": {
+        "symbols": [
+            "CRWD", "SNOW", "DDOG", "SHOP", "MELI", "COIN", "UBER", "AXON",
+            "PLTR", "AI", "BBAI", "SOUN", "IONQ", "RXRX", "GTLB", "PATH",
+            "S", "CPNG", "MRVL", "MPWR", "WOLF", "SITM", "ONTO", "ALAB",
+            "SMCI", "SNDK",
+        ],
+        "lookback_days_momentum": 365,
+        "lookback_days_regime": 1825,
+        "max_strategies_per_run": 5,
+        "min_forward_return_pct": 1.5,
+        "min_examples": 30,
+        "min_win_rate_pct": 45.0,
+        "cron_schedule": "0 2 * * *",
+        "research_url": "http://research:8081",
+    },
 }
 
 

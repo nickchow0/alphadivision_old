@@ -47,3 +47,18 @@ def test_load_config_does_not_mutate_defaults_on_repeated_calls(tmp_path):
     with patch.dict(os.environ, {"CONFIG_FILE": "/nonexistent/config.toml"}):
         cfg = load_config()
     assert cfg["watchlist"] == ["AAPL", "MSFT", "GOOGL"]
+
+
+def test_ml_config_defaults():
+    """ML config keys exist in defaults even with empty config.toml."""
+    with patch("shared.config.open", side_effect=FileNotFoundError):
+        cfg = load_config()
+    ml = cfg["ml"]
+    assert isinstance(ml["symbols"], list)
+    assert len(ml["symbols"]) == 26
+    assert ml["lookback_days_momentum"] == 365
+    assert ml["lookback_days_regime"] == 1825
+    assert ml["max_strategies_per_run"] == 5
+    assert ml["min_forward_return_pct"] == 1.5
+    assert ml["min_examples"] == 30
+    assert ml["min_win_rate_pct"] == 45.0
