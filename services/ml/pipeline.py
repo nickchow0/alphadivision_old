@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+from datetime import date, timedelta
 from typing import Optional
 
 import requests
@@ -45,25 +46,71 @@ def health():
 
 # ── Phase helpers ─────────────────────────────────────────────────────────────
 
-def _backtest_strategy(strategy_id: int, symbol: Optional[str],
-                        research_url: str) -> bool:
-    """POST to Research API to trigger a backtest. Returns True if promoted."""
+def _call_backtest_api(
+    research_url: str,
+    strategy_id: int,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    data_source: str,
+) -> Optional[dict]:
+    """POST to Research backtest API. Returns metrics dict or None on failure."""
     endpoint = f"{research_url}/api/strategies/{strategy_id}/backtest"
-    # Fall back to a known symbol if pattern is cross-symbol
-    payload = {"symbol": symbol or "SPY"}
+    payload = {
+        "symbol": symbol,
+        "start_date": start_date,
+        "end_date": end_date,
+        "data_source": data_source,
+    }
     try:
         resp = requests.post(endpoint, json=payload, timeout=120)
         resp.raise_for_status()
-        data = resp.json()
-        promoted = data.get("status") == "candidate"
-        log.info(
-            "Strategy %d backtest: status=%s, promoted=%s",
-            strategy_id, data.get("status"), promoted,
-        )
-        return promoted
+        return resp.json().get("metrics", {})
     except Exception as exc:  # noqa: BLE001
-        log.error("Backtest API call failed for strategy %d: %s", strategy_id, exc)
+        log.error(
+            "Backtest API call failed for strategy %d (%s): %s",
+            strategy_id, data_source, exc,
+        )
+        return None
+
+
+def _backtest_strategy(strategy_id: int, symbol: Optional[str], research_url: str) -> bool:
+    """Run yfinance then Alpaca backtests via Research API. Returns True if promoted.
+
+    Promotion only happens on Alpaca runs that pass candidate thresholds (mirrors
+    the Research service logic). If Alpaca credentials are not configured, returns False.
+    """
+    today = date.today()
+    start_date = (today - timedelta(days=730)).isoformat()  # 2yr daily bars
+    end_date = today.isoformat()
+    sym = symbol or "SPY"
+
+    # Phase 5a: yfinance reference backtest
+    _call_backtest_api(research_url, strategy_id, sym, start_date, end_date, "yfinance")
+
+    # Phase 5b: Alpaca backtest — this is what triggers promotion
+    if not os.environ.get("ALPACA_API_KEY"):
+        log.info("Strategy %d: Alpaca creds not configured — skipping Alpaca backtest", strategy_id)
         return False
+
+    metrics = _call_backtest_api(research_url, strategy_id, sym, start_date, end_date, "alpaca")
+    if metrics is None:
+        return False
+
+    # Mirror the Research service candidate thresholds
+    promoted = (
+        (metrics.get("trade_count") or 0) > 0
+        and (metrics.get("sharpe_ratio") or 0) >= 0.5
+        and (metrics.get("win_rate_pct") or 0) >= 45.0
+        and (metrics.get("max_drawdown_pct") or 100.0) <= 20.0
+    )
+    log.info(
+        "Strategy %d Alpaca backtest: promoted=%s, Sharpe=%.2f, win_rate=%.1f%%",
+        strategy_id, promoted,
+        metrics.get("sharpe_ratio") or 0,
+        metrics.get("win_rate_pct") or 0,
+    )
+    return promoted
 
 
 def _run_phases() -> None:

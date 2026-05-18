@@ -32,6 +32,13 @@ _DRY_RUN_SNAPSHOTS = [
 
 _VALID_DECISIONS = {"buy", "sell", "hold"}
 
+_SAFE_BUILTINS = {
+    "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+    "float": float, "int": int, "isinstance": isinstance, "len": len,
+    "list": list, "max": max, "min": min, "range": range,
+    "round": round, "str": str, "tuple": tuple, "zip": zip,
+}
+
 
 def _extract_code_block(text: str) -> str:
     """Strip markdown fences if present, return raw code."""
@@ -67,7 +74,7 @@ def _validate_code(code: str) -> list:
         return errors
 
     # 3. Dry-run check
-    namespace = {"__builtins__": {}}
+    namespace: dict = {"__builtins__": _SAFE_BUILTINS}
     try:
         exec(compile(tree, "<string>", "exec"), namespace)  # noqa: S102
     except Exception as exc:

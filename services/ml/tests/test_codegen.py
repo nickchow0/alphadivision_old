@@ -125,3 +125,21 @@ def test_generate_strategy_code_strips_markdown_fences():
 
     result = generate_strategy_code(pattern, client=mock_client)
     assert "```" not in (result or "")
+
+
+def test_validate_code_accepts_code_with_common_builtins():
+    """Code using min/max/abs/round/isinstance should not be rejected."""
+    code_with_builtins = '''
+def generate_signal(snapshot):
+    price = float(snapshot["price"])
+    rsi = snapshot["rsi"]
+    vol = snapshot["volume"]
+    vol_avg = snapshot["volume_avg"]
+    ratio = round(vol / vol_avg, 2) if vol_avg > 0 else 1.0
+    if rsi < 40 and ratio > 1.2:
+        conf = min(0.9, abs(rsi - 50) / 50)
+        return {"decision": "buy", "confidence": conf, "reasoning": f"RSI={rsi:.1f}"}
+    return {"decision": "hold", "confidence": 0.5, "reasoning": "no signal"}
+'''
+    errors = _validate_code(code_with_builtins)
+    assert errors == [], f"Unexpected errors: {errors}"

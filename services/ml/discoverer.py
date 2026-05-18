@@ -23,6 +23,7 @@ log = logging.getLogger("ml.discoverer")
 
 _DT_MAX_DEPTH   = 4
 _KMEANS_K       = 10
+_KMEANS_MIN_EXAMPLES = 50  # Spec requires ≥ 50 for cluster candidates (vs 30 for DT)
 _FORWARD_RETURN_BARS = 10
 
 
@@ -185,7 +186,7 @@ def _extract_cluster_patterns(rows: list[dict], k: int,
         win_rate    = float(np.mean([r > 0 for r in returns])) * 100
         sh          = _sharpe(returns)
 
-        if (n >= cfg["min_examples"]
+        if (n >= _KMEANS_MIN_EXAMPLES
                 and avg_ret_pct >= cfg["min_forward_return_pct"]
                 and win_rate >= cfg["min_win_rate_pct"]):
             # Describe cluster by top-3 most-deviated centroid features
