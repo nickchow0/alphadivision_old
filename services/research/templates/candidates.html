@@ -32,7 +32,7 @@
         </table>
       </div>
       <div>
-        <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">yfinance (Research)</h3>
+        <h3 style="font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">yfinance (Reference)</h3>
         <table class="data-table metrics-table" style="font-size:13px;">
           <tr><th>Sharpe Ratio</th><td>{{ '%.2f'|format(c.yf_sharpe_ratio|float) if c.yf_sharpe_ratio is not none else '—' }}</td></tr>
           <tr><th>Win Rate</th><td>{{ '%.1f'|format(c.yf_win_rate_pct|float) if c.yf_win_rate_pct is not none else '—' }}%</td></tr>
