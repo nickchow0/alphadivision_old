@@ -64,7 +64,7 @@ info "OCI CLI found: $(oci --version 2>&1 | head -1)"
 
 # ── Region ────────────────────────────────────────────────────────────────────
 
-REGION=$(oci iam region-subscription list --query 'data[0]."region-name"' --raw-output 2>/dev/null || true)
+REGION=$(grep '^region' ~/.oci/config | head -1 | awk -F= '{print $2}' | tr -d ' ')
 if [[ -z "$REGION" ]]; then
     error "Could not determine region from OCI config. Check ~/.oci/config."
 fi
@@ -72,8 +72,7 @@ info "Region: $REGION"
 
 # ── Compartment ───────────────────────────────────────────────────────────────
 
-TENANCY_OCID=$(oci iam compartment list --include-root --query 'data[?contains("id", `tenancy`)].id | [0]' --raw-output 2>/dev/null || \
-               grep tenancy ~/.oci/config | head -1 | awk -F= '{print $2}' | tr -d ' ')
+TENANCY_OCID=$(grep '^tenancy' ~/.oci/config | head -1 | awk -F= '{print $2}' | tr -d ' ')
 
 echo ""
 prompt "Enter compartment OCID (press Enter to use root/tenancy: $TENANCY_OCID):"
