@@ -3,6 +3,7 @@ import sys
 import os
 sys.path.insert(0, "/app")
 
+import jinja2
 from flask import Flask, render_template, jsonify, request
 from shared.config import load_config
 from shared.logger import get_logger
@@ -23,7 +24,30 @@ from queries import (
 
 log = get_logger("research")
 
+_DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:8080")
+_RESEARCH_URL  = os.environ.get("RESEARCH_URL",  "http://localhost:8081")
+
 app = Flask(__name__)
+
+# Load templates from both this service and shared/templates/
+app.jinja_loader = jinja2.ChoiceLoader([
+    app.jinja_loader,
+    jinja2.FileSystemLoader("/app/shared/templates"),
+])
+
+@app.context_processor
+def _inject_nav():
+    """Inject nav URLs and active_page into every template."""
+    endpoint = request.endpoint or ""
+    _page_map = {
+        "research_page":   "research",
+        "candidates_page": "research",
+    }
+    return dict(
+        dashboard_url=_DASHBOARD_URL,
+        research_url=_RESEARCH_URL,
+        active_page=_page_map.get(endpoint, "research"),
+    )
 
 # Candidate promotion thresholds (Alpaca run must pass all)
 _SHARPE_MIN = 0.5

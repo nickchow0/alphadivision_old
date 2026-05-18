@@ -1,27 +1,2 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AlphaDivision Research{% block title %}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/research.css">
-</head>
-<body>
-  <header class="navbar">
-    <span class="nav-brand">AlphaDivision</span>
-    <nav class="nav-links">
-      <a href="http://localhost:8080/">Overview</a>
-      <a href="http://localhost:8080/trades">Trades</a>
-      <a href="http://localhost:8080/analysis">Analysis</a>
-      <a href="/research" class="{{ 'active' if request.endpoint == 'research_page' else '' }}">Research</a>
-      <a href="/candidates" class="{{ 'active' if request.endpoint == 'candidates_page' else '' }}">Candidates</a>
-    </nav>
-  </header>
-
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</body>
-</html>
+{% extends "base.html" %}
+{% block extra_css %}<link rel="stylesheet" href="/static/research.css">{% endblock %}

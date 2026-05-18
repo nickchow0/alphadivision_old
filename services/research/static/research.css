@@ -1,19 +1,14 @@
-/* ── Base ─────────────────────────────────────────────────────────────────── */
+/* ── Research-specific variables (mapped to dashboard palette) ────────────── */
 :root {
-  --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
-  --text: #e2e8f0; --muted: #64748b; --accent: #6366f1;
-  --danger: #ef4444; --success: #22c55e; --warning: #f59e0b;
+  --accent:  #58a6ff;   /* dashboard --blue  */
+  --danger:  #f85149;   /* dashboard --red   */
+  --success: #3fb950;   /* dashboard --green */
+  --warning: #d29922;   /* dashboard --yellow */
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+/* dashboard style.css sets --bg, --surface, --border, --text, --muted */
 
 /* ── Layout ───────────────────────────────────────────────────────────────── */
-.navbar { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; height: 56px; gap: 32px; }
-.nav-brand { font-weight: 700; font-size: 16px; }
-.nav-links { display: flex; gap: 24px; }
-.nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; }
-.nav-links a.active, .nav-links a:hover { color: var(--text); }
-.container { max-width: 1280px; margin: 0 auto; padding: 24px 16px; }
+.container { max-width: 1280px; margin: 0 auto; padding: 24px 16px 80px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 .page-title { font-size: 22px; font-weight: 600; }
 

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlphaDivision{% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ dashboard_url }}/static/style.css">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <header class="navbar">
+    <span class="nav-brand">AlphaDivision</span>
+    <nav class="nav-links">
+      <a href="{{ dashboard_url }}/"          class="{{ 'active' if active_page == 'overview'   else '' }}">Overview</a>
+      <a href="{{ dashboard_url }}/trades"    class="{{ 'active' if active_page == 'trades'     else '' }}">Trades</a>
+      <a href="{{ dashboard_url }}/decisions" class="{{ 'active' if active_page == 'decisions'  else '' }}">Decisions</a>
+      <a href="{{ dashboard_url }}/analysis"  class="{{ 'active' if active_page == 'analysis'   else '' }}">Analysis</a>
+      <a href="{{ dashboard_url }}/watchlist" class="{{ 'active' if active_page == 'watchlist'  else '' }}">Watchlist</a>
+      <a href="{{ research_url }}/research"   class="{{ 'active' if active_page == 'research'   else '' }}">Research</a>
+      <a href="{{ dashboard_url }}/charts"    class="{{ 'active' if active_page == 'charts'     else '' }}">Charts</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="tab-bar">
+    <a href="{{ dashboard_url }}/"          class="{{ 'active' if active_page == 'overview'  else '' }}"><span>Overview</span></a>
+    <a href="{{ dashboard_url }}/trades"    class="{{ 'active' if active_page == 'trades'    else '' }}"><span>Trades</span></a>
+    <a href="{{ dashboard_url }}/decisions" class="{{ 'active' if active_page == 'decisions' else '' }}"><span>Decisions</span></a>
+    <a href="{{ research_url }}/research"   class="{{ 'active' if active_page == 'research'  else '' }}"><span>Research</span></a>
+    <a href="{{ dashboard_url }}/watchlist" class="{{ 'active' if active_page == 'watchlist' else '' }}"><span>Watchlist</span></a>
+    <a href="{{ dashboard_url }}/charts"    class="{{ 'active' if active_page == 'charts'    else '' }}"><span>Charts</span></a>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
