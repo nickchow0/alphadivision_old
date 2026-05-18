@@ -111,6 +111,22 @@ services:
       - ./config.toml:/app/config.toml:ro
       - logs:/var/log/alphadivision
 
+  research:
+    build: ./services/research
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SERVICE_NAME: research
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./shared:/app/shared
+      - ./config.toml:/app/config.toml:ro
+      - logs:/var/log/alphadivision
+
 volumes:
   postgres_data:
   redis_data:
