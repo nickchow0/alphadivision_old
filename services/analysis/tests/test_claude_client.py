@@ -118,6 +118,31 @@ def test_call_claude_raises_on_non_json_response():
             call_claude(_sample_snapshot(), "test-api-key")
 
 
+def test_call_claude_strips_markdown_code_fences():
+    inner = json.dumps({"decision": "buy", "confidence": 0.72, "reasoning": "Strong setup."})
+    fenced = f"```json\n{inner}\n```"
+    mock_response = _make_claude_response(fenced)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        result = call_claude(_sample_snapshot(), "test-api-key")
+
+    assert result["decision"] == "buy"
+    assert result["confidence"] == pytest.approx(0.72)
+
+
+def test_call_claude_strips_plain_code_fences():
+    inner = json.dumps({"decision": "sell", "confidence": 0.65, "reasoning": "Downtrend."})
+    fenced = f"```\n{inner}\n```"
+    mock_response = _make_claude_response(fenced)
+
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = mock_response
+        result = call_claude(_sample_snapshot(), "test-api-key")
+
+    assert result["decision"] == "sell"
+
+
 def test_call_claude_raises_on_missing_decision_field():
     response_json = json.dumps({"confidence": 0.7, "reasoning": "Missing decision."})
     mock_response = _make_claude_response(response_json)

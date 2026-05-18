@@ -80,6 +80,11 @@ def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
 
     raw = message.content[0].text.strip()
 
+    # Strip markdown code fences if the model wrapped the JSON (e.g. ```json ... ```)
+    if raw.startswith("```"):
+        lines = raw.splitlines()
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:]).strip()
+
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
