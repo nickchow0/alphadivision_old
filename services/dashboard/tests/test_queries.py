@@ -188,23 +188,81 @@ class TestGetApiHealth(unittest.TestCase):
 
 
 class TestGetWatchlist(unittest.TestCase):
+    def _mock_redis(self, snapshots: dict):
+        """Build a mock Redis that returns JSON snapshots for snapshot:<symbol> keys."""
+        import json
+        mock_r = MagicMock()
+        mock_r.get.side_effect = lambda key: (
+            json.dumps(snapshots[key.removeprefix("snapshot:")])
+            if key.removeprefix("snapshot:") in snapshots else None
+        )
+        return mock_r
+
+    @patch("queries.get_redis")
+    @patch("queries.load_config")
     @patch("queries.get_conn")
-    def test_returns_latest_decision_per_symbol(self, mock_get_conn):
-        rows = [
-            {"symbol": "AAPL", "decision": "buy", "confidence": "0.820",
-             "decided_at": datetime(2026, 5, 15, 9, 29, tzinfo=timezone.utc), "acted_on": True},
-            {"symbol": "TSLA", "decision": "hold", "confidence": "0.550",
-             "decided_at": datetime(2026, 5, 15, 9, 29, tzinfo=timezone.utc), "acted_on": False},
-        ]
-        mock_conn, mock_cur = _make_mock_conn(rows)
+    def test_returns_one_row_per_configured_symbol(self, mock_get_conn, mock_load_config, mock_get_redis):
+        mock_load_config.return_value = {"watchlist": ["AAPL", "MSFT"]}
+        mock_get_redis.return_value = self._mock_redis({})
+        mock_conn, mock_cur = _make_mock_conn([])
         mock_get_conn.return_value = _make_mock_cm(mock_conn)
 
         result = get_watchlist()
         self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["symbol"], "AAPL")
+        self.assertEqual([r["symbol"] for r in result], ["AAPL", "MSFT"])
 
+    @patch("queries.get_redis")
+    @patch("queries.load_config")
     @patch("queries.get_conn")
-    def test_returns_empty_list_when_no_decisions(self, mock_get_conn):
+    def test_merges_snapshot_data(self, mock_get_conn, mock_load_config, mock_get_redis):
+        mock_load_config.return_value = {"watchlist": ["AAPL"]}
+        mock_get_redis.return_value = self._mock_redis({
+            "AAPL": {"symbol": "AAPL", "price": 175.5, "rsi": 52.3,
+                     "sma20": 172.1, "sma50": 168.5, "timestamp": "2026-05-18T14:00:00Z"}
+        })
+        mock_conn, mock_cur = _make_mock_conn([])
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_watchlist()
+        self.assertEqual(result[0]["price"], 175.5)
+        self.assertEqual(result[0]["rsi"], 52.3)
+
+    @patch("queries.get_redis")
+    @patch("queries.load_config")
+    @patch("queries.get_conn")
+    def test_merges_decision_data(self, mock_get_conn, mock_load_config, mock_get_redis):
+        mock_load_config.return_value = {"watchlist": ["AAPL"]}
+        mock_get_redis.return_value = self._mock_redis({})
+        rows = [{"symbol": "AAPL", "decision": "buy", "confidence": "0.82",
+                 "decided_at": datetime(2026, 5, 18, 14, 0, tzinfo=timezone.utc),
+                 "acted_on": True, "skip_reason": None}]
+        mock_conn, mock_cur = _make_mock_conn(rows)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_watchlist()
+        self.assertEqual(result[0]["decision"], "buy")
+        self.assertEqual(result[0]["acted_on"], True)
+
+    @patch("queries.get_redis")
+    @patch("queries.load_config")
+    @patch("queries.get_conn")
+    def test_symbol_with_no_data_has_none_fields(self, mock_get_conn, mock_load_config, mock_get_redis):
+        mock_load_config.return_value = {"watchlist": ["GOOGL"]}
+        mock_get_redis.return_value = self._mock_redis({})
+        mock_conn, mock_cur = _make_mock_conn([])
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+
+        result = get_watchlist()
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["price"])
+        self.assertIsNone(result[0]["decision"])
+
+    @patch("queries.get_redis")
+    @patch("queries.load_config")
+    @patch("queries.get_conn")
+    def test_empty_watchlist_returns_empty_list(self, mock_get_conn, mock_load_config, mock_get_redis):
+        mock_load_config.return_value = {"watchlist": []}
+        mock_get_redis.return_value = self._mock_redis({})
         mock_conn, mock_cur = _make_mock_conn([])
         mock_get_conn.return_value = _make_mock_cm(mock_conn)
 

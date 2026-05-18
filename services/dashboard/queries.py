@@ -1,9 +1,12 @@
+import json
 from datetime import date as Date
 from typing import Optional
 
 import psycopg2.extras
 
 from shared.db import get_conn
+from shared.config import load_config
+from shared.redis_client import get_redis
 
 
 def get_open_positions() -> list:
@@ -97,17 +100,62 @@ def get_api_health() -> list:
 
 
 def get_watchlist() -> list:
-    """Return the most recent AI decision per symbol (the current watchlist state)."""
-    sql = """
-        SELECT DISTINCT ON (symbol)
-            symbol, decision, confidence, decided_at, acted_on
-        FROM decisions
-        ORDER BY symbol, decided_at DESC
     """
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql)
-            return list(cur.fetchall())
+    Return one row per configured watchlist symbol combining:
+    - Latest market snapshot from Redis (price, RSI, SMAs) if available
+    - Most recent AI decision from the decisions table if available
+
+    Always returns all configured symbols, even those with no data yet.
+    """
+    symbols = load_config().get("watchlist", [])
+
+    # Latest snapshot per symbol from Redis
+    r = get_redis()
+    snapshots: dict[str, dict] = {}
+    for sym in symbols:
+        raw = r.get(f"snapshot:{sym}")
+        if raw:
+            try:
+                snapshots[sym] = json.loads(raw)
+            except (json.JSONDecodeError, Exception):
+                pass
+
+    # Latest decision per symbol from DB
+    decisions: dict[str, dict] = {}
+    if symbols:
+        placeholders = ",".join(["%s"] * len(symbols))
+        sql = f"""
+            SELECT DISTINCT ON (symbol)
+                symbol, decision, confidence, decided_at, acted_on, skip_reason
+            FROM decisions
+            WHERE symbol IN ({placeholders})
+            ORDER BY symbol, decided_at DESC
+        """
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, symbols)
+                for row in cur.fetchall():
+                    decisions[row["symbol"]] = dict(row)
+
+    # Merge into one row per symbol
+    result = []
+    for sym in symbols:
+        snap = snapshots.get(sym, {})
+        dec = decisions.get(sym, {})
+        result.append({
+            "symbol":      sym,
+            "price":       snap.get("price"),
+            "rsi":         snap.get("rsi"),
+            "sma20":       snap.get("sma20"),
+            "sma50":       snap.get("sma50"),
+            "snapshot_at": snap.get("timestamp"),
+            "decision":    dec.get("decision"),
+            "confidence":  dec.get("confidence"),
+            "acted_on":    dec.get("acted_on"),
+            "skip_reason": dec.get("skip_reason"),
+            "decided_at":  dec.get("decided_at"),
+        })
+    return result
 
 
 def get_pnl_history(days: int = 30) -> list:

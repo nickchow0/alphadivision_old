@@ -12,7 +12,8 @@ _HEARTBEAT_TTL = 90
 
 def publish_snapshot(snapshot: dict) -> None:
     """
-    Publish a market snapshot to Redis stream.
+    Publish a market snapshot to the Redis stream and cache the latest
+    snapshot per-symbol so consumers (e.g. dashboard) can read it directly.
 
     Args:
         snapshot: Dictionary containing market snapshot data with fields like
@@ -20,11 +21,15 @@ def publish_snapshot(snapshot: dict) -> None:
                  sma20_prev2, news, macro.
     """
     r = get_redis()
+    payload = json.dumps(snapshot)
     r.xadd(
         _STREAM_KEY,
-        {"data": json.dumps(snapshot)},
+        {"data": payload},
         maxlen=_STREAM_MAXLEN,
     )
+    # Cache latest snapshot per symbol with no expiry — overwritten each cycle
+    symbol = snapshot.get("symbol", "UNKNOWN")
+    r.set(f"snapshot:{symbol}", payload)
 
 
 def publish_heartbeat() -> None:

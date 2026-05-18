@@ -100,6 +100,29 @@ def test_publish_snapshot_caps_stream_at_1000():
         assert kwargs["maxlen"] == 1000
 
 
+def test_publish_snapshot_caches_latest_per_symbol():
+    """Verify publish_snapshot writes the snapshot to snapshot:<symbol> Redis key."""
+    mock_redis = MagicMock()
+    with patch("publisher.get_redis", return_value=mock_redis):
+        snapshot = _sample_snapshot()
+        publish_snapshot(snapshot)
+        mock_redis.set.assert_called_once()
+        key = mock_redis.set.call_args[0][0]
+        assert key == "snapshot:AAPL"
+
+
+def test_publish_snapshot_cache_value_is_valid_json():
+    """Verify the cached snapshot value is valid JSON containing the full snapshot."""
+    mock_redis = MagicMock()
+    with patch("publisher.get_redis", return_value=mock_redis):
+        snapshot = _sample_snapshot()
+        publish_snapshot(snapshot)
+        value = mock_redis.set.call_args[0][1]
+        parsed = json.loads(value)
+        assert parsed["symbol"] == "AAPL"
+        assert parsed["price"] == 175.50
+
+
 # ---------------------------------------------------------------------------
 # publish_heartbeat() tests
 # ---------------------------------------------------------------------------
