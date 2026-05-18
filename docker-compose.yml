@@ -38,9 +38,11 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: data
+      CONFIG_FILE: /etc/alphadivision/config.toml
     volumes:
+      - ./services/data:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   analysis:
@@ -54,11 +56,12 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: analysis
-      # Optional: set to a Discord webhook URL to enable failure alerts
+      CONFIG_FILE: /etc/alphadivision/config.toml
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     volumes:
+      - ./services/analysis:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   execution:
@@ -72,9 +75,11 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: execution
+      CONFIG_FILE: /etc/alphadivision/config.toml
     volumes:
+      - ./services/execution:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   alerts:
@@ -88,9 +93,11 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: alerts
+      CONFIG_FILE: /etc/alphadivision/config.toml
     volumes:
+      - ./services/alerts:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   dashboard:
@@ -104,11 +111,13 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: dashboard
+      CONFIG_FILE: /etc/alphadivision/config.toml
     ports:
       - "8080:8080"
     volumes:
+      - ./services/dashboard:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   research:
@@ -120,11 +129,13 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: research
+      CONFIG_FILE: /etc/alphadivision/config.toml
     ports:
       - "8081:8081"
     volumes:
+      - ./services/research:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
   ml:
@@ -138,10 +149,12 @@ services:
     env_file: .env
     environment:
       SERVICE_NAME: ml
+      CONFIG_FILE: /etc/alphadivision/config.toml
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     volumes:
+      - ./services/ml:/app
       - ./shared:/app/shared
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/etc/alphadivision/config.toml:ro
       - logs:/var/log/alphadivision
 
 volumes:
