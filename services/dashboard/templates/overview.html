@@ -161,6 +161,9 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
 <script>
 (function () {
   /* ── Chart setup ── */
@@ -178,7 +181,7 @@
 
   let pnlChart, cumulativeChart, tradesChart, portfolioChart;
 
-  function initCharts(pnlDates, pnlValues, cumulativeValues, portfolioValues, tradeDates, tradeCounts) {
+  function initCharts(pnlDates, pnlValues, cumulativeValues, portfolioDates, portfolioValues, tradeDates, tradeCounts) {
     const showOrHide = (canvasId, emptyId, data) => {
       const isEmpty = data.length === 0;
       document.getElementById(canvasId).style.display = isEmpty ? 'none' : 'block';
@@ -218,12 +221,20 @@
 
     showOrHide('portfolioChart', 'portfolioEmpty', portfolioValues);
     if (portfolioValues.length > 0) {
+      const portfolioMin = Math.min(...portfolioValues) * 0.995;
       portfolioChart = new Chart(document.getElementById('portfolioChart'), {
-        type: 'line',
-        data: { labels: pnlDates, datasets: [{ label: 'Portfolio Value ($)',
-          data: portfolioValues, borderColor: '#3fb950',
-          backgroundColor: 'rgba(63,185,80,0.1)', fill: true, tension: 0.2, pointRadius: 3 }] },
-        options: sharedOpts
+        type: 'bar',
+        data: { labels: portfolioDates, datasets: [{ label: 'Portfolio Value ($)',
+          data: portfolioValues, backgroundColor: '#3fb950', borderRadius: 4 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 300 },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' }, min: portfolioMin }
+          }
+        }
       });
     }
   }
@@ -249,7 +260,7 @@
     });
     update(cumulativeChart, 'cumulativeChart', 'cumulativeEmpty', d.pnl_dates, d.cumulative_values, null);
     update(tradesChart, 'tradesChart', 'tradesEmpty', d.trade_dates, d.trade_counts, null);
-    update(portfolioChart, 'portfolioChart', 'portfolioEmpty', d.pnl_dates, d.portfolio_values, null);
+    update(portfolioChart, 'portfolioChart', 'portfolioEmpty', d.portfolio_dates, d.portfolio_values, null);
   }
 
   /* ── Initial chart render from server-rendered data ── */
@@ -257,6 +268,7 @@
     {{ pnl_dates | safe }},
     {{ pnl_values | safe }},
     {{ cumulative_values | safe }},
+    {{ portfolio_dates | safe }},
     {{ portfolio_values | safe }},
     {{ trade_dates | safe }},
     {{ trade_counts | safe }}
@@ -359,4 +371,4 @@
   setInterval(refreshCharts,  5 * 60_000);
 })();
 </script>
-{% endblock %}
+{% endblock %} {# extra_js #}

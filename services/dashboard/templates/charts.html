@@ -31,6 +31,9 @@
   <p id="portfolioEmpty" class="empty-state" style="display:none">No data yet</p>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
 <script>
 (function () {
   const sharedOpts = {
@@ -46,7 +49,7 @@
 
   let pnlChart, cumulativeChart, tradesChart, portfolioChart;
 
-  function render(pnlDates, pnlValues, cumulativeValues, portfolioValues, tradeDates, tradeCounts) {
+  function render(pnlDates, pnlValues, cumulativeValues, portfolioDates, portfolioValues, tradeDates, tradeCounts) {
     const toggle = (canvasId, emptyId, data) => {
       document.getElementById(canvasId).style.display = data.length ? 'block' : 'none';
       document.getElementById(emptyId).style.display  = data.length ? 'none'  : 'block';
@@ -104,17 +107,26 @@
 
     toggle('portfolioChart', 'portfolioEmpty', portfolioValues);
     if (portfolioValues.length) {
+      const portfolioMin = Math.min(...portfolioValues) * 0.995;
       if (portfolioChart) {
-        portfolioChart.data.labels = pnlDates;
+        portfolioChart.data.labels = portfolioDates;
         portfolioChart.data.datasets[0].data = portfolioValues;
+        portfolioChart.options.scales.y.min = portfolioMin;
         portfolioChart.update();
       } else {
         portfolioChart = new Chart(document.getElementById('portfolioChart'), {
-          type: 'line',
-          data: { labels: pnlDates, datasets: [{ label: 'Portfolio Value ($)',
-            data: portfolioValues, borderColor: '#3fb950',
-            backgroundColor: 'rgba(63,185,80,0.1)', fill: true, tension: 0.2, pointRadius: 3 }] },
-          options: sharedOpts
+          type: 'bar',
+          data: { labels: portfolioDates, datasets: [{ label: 'Portfolio Value ($)',
+            data: portfolioValues, backgroundColor: '#3fb950', borderRadius: 4 }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 300 },
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+              y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' }, min: portfolioMin }
+            }
+          }
         });
       }
     }
@@ -125,6 +137,7 @@
     {{ pnl_dates | safe }},
     {{ pnl_values | safe }},
     {{ cumulative_values | safe }},
+    {{ portfolio_dates | safe }},
     {{ portfolio_values | safe }},
     {{ trade_dates | safe }},
     {{ trade_counts | safe }}
@@ -135,7 +148,7 @@
       const res = await fetch('/api/charts');
       if (!res.ok) return;
       const d = await res.json();
-      render(d.pnl_dates, d.pnl_values, d.cumulative_values, d.portfolio_values, d.trade_dates, d.trade_counts);
+      render(d.pnl_dates, d.pnl_values, d.cumulative_values, d.portfolio_dates, d.portfolio_values, d.trade_dates, d.trade_counts);
       const now = new Date();
       document.getElementById('last-updated').textContent =
         now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -147,4 +160,4 @@
   setInterval(refresh, 5 * 60_000);
 })();
 </script>
-{% endblock %}
+{% endblock %} {# extra_js #}
