@@ -3,6 +3,35 @@ import alpaca_trade_api as tradeapi
 from datetime import datetime, timezone, timedelta
 
 
+def fetch_account_equity(api_key: str, secret_key: str, base_url: str) -> float:
+    """
+    Fetch the current paper-trading account equity from Alpaca.
+
+    Returns the float equity value (cash + market value of open positions at
+    real-time prices) as reported by Alpaca.  This is the authoritative number
+    — use it instead of reconstructing from snapshot prices.
+    """
+    api = tradeapi.REST(api_key, secret_key, base_url)
+    account = api.get_account()
+    return float(account.equity)
+
+
+def fetch_latest_price(symbol: str, api_key: str, secret_key: str, base_url: str) -> float:
+    """
+    Fetch the live last-trade price for a symbol from Alpaca.
+
+    Uses get_latest_trade() which reflects the most recent transaction price
+    during market hours — more accurate than the previous daily bar close.
+
+    Raises ValueError if no trade data is returned.
+    """
+    api = tradeapi.REST(api_key, secret_key, base_url)
+    trade = api.get_latest_trade(symbol)
+    if trade is None:
+        raise ValueError(f"No latest trade returned for {symbol}")
+    return float(trade.price)
+
+
 def fetch_bars(symbol: str, api_key: str, secret_key: str, base_url: str) -> list[dict]:
     """
     Fetch 60 daily OHLCV bars for the given symbol from Alpaca.

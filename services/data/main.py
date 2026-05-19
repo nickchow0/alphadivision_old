@@ -8,9 +8,9 @@ sys.path.insert(0, "/app")
 
 from shared.logger import get_logger
 from market import is_market_open, get_watchlist
-from fetchers import fetch_bars, fetch_news, fetch_macro
+from fetchers import fetch_bars, fetch_news, fetch_macro, fetch_account_equity, fetch_latest_price
 from indicators import calculate_indicators
-from publisher import publish_snapshot, publish_heartbeat
+from publisher import publish_snapshot, publish_heartbeat, publish_account_equity
 from health_checker import check_all
 
 log = get_logger("data")
@@ -58,7 +58,13 @@ def _fetch_and_publish_price(symbol: str, alpaca_key: str, alpaca_secret: str,
             log.warning(f"Not enough bars to calculate indicators for {symbol} (got {len(bars)})")
             return
 
-        price = bars[-1]["c"]
+        # Use live last-trade price; fall back to previous daily close if unavailable
+        try:
+            price = fetch_latest_price(symbol, alpaca_key, alpaca_secret, alpaca_base_url)
+        except Exception as exc:
+            price = bars[-1]["c"]
+            log.warning(f"[{symbol}] Live price fetch failed ({exc}), using last bar close {price:.2f}")
+
         snapshot = {
             "symbol": symbol,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -141,7 +147,7 @@ def main() -> None:
                     symbol_news_cache.setdefault(symbol, [])
             last_news = now
 
-        # --- Price + indicators (every 15 min, market hours only) ---
+        # --- Price + indicators + account equity (every 15 min, market hours only) ---
         if now - last_price >= _PRICE_INTERVAL and is_market_open():
             for symbol in watchlist:
                 _fetch_and_publish_price(
@@ -152,6 +158,12 @@ def main() -> None:
                     symbol_news_cache.get(symbol, []),
                     cached_macro,
                 )
+            try:
+                equity = fetch_account_equity(alpaca_key, alpaca_secret, alpaca_base_url)
+                publish_account_equity(equity)
+                log.info(f"Published account equity: ${equity:,.2f}")
+            except Exception as exc:
+                log.error(f"Account equity fetch failed: {exc}")
             last_price = now
 
         time.sleep(5)

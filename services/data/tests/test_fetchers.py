@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
-from fetchers import fetch_bars, fetch_news, fetch_macro
+from fetchers import fetch_bars, fetch_news, fetch_macro, fetch_latest_price
 
 
 # ---------------------------------------------------------------------------
@@ -199,3 +199,37 @@ def test_fetch_macro_raises_on_fred_dot_sentinel():
     with patch("fetchers.requests.get", side_effect=[fed_dot, cpi_resp]):
         with pytest.raises(ValueError, match="missing value"):
             fetch_macro("fredkey")
+
+
+# ---------------------------------------------------------------------------
+# fetch_latest_price tests
+# ---------------------------------------------------------------------------
+
+def _make_mock_api_with_trade(price: float):
+    mock_trade = MagicMock()
+    mock_trade.price = price
+    mock_api = MagicMock()
+    mock_api.get_latest_trade.return_value = mock_trade
+    return mock_api
+
+
+def test_fetch_latest_price_returns_float():
+    mock_api = _make_mock_api_with_trade(175.42)
+    with patch("fetchers.tradeapi.REST", return_value=mock_api):
+        result = fetch_latest_price("AAPL", "key", "secret", "https://paper-api.alpaca.markets")
+    assert result == pytest.approx(175.42)
+
+
+def test_fetch_latest_price_calls_correct_symbol():
+    mock_api = _make_mock_api_with_trade(50.0)
+    with patch("fetchers.tradeapi.REST", return_value=mock_api):
+        fetch_latest_price("TSLA", "key", "secret", "https://paper-api.alpaca.markets")
+    mock_api.get_latest_trade.assert_called_once_with("TSLA")
+
+
+def test_fetch_latest_price_raises_when_no_trade():
+    mock_api = MagicMock()
+    mock_api.get_latest_trade.return_value = None
+    with patch("fetchers.tradeapi.REST", return_value=mock_api):
+        with pytest.raises(ValueError, match="No latest trade"):
+            fetch_latest_price("AAPL", "key", "secret", "https://paper-api.alpaca.markets")
