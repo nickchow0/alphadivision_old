@@ -21,6 +21,8 @@ from queries import (
     get_confidence_histogram,
     get_acted_on_rate_by_band,
     get_win_rate_by_band,
+    get_unrealized_pnl,
+    get_account_equity,
 )
 
 
@@ -71,6 +73,81 @@ class TestGetOpenPositions(unittest.TestCase):
         get_open_positions()
         call_kwargs = mock_conn.cursor.call_args[1]
         self.assertEqual(call_kwargs["cursor_factory"], psycopg2.extras.RealDictCursor)
+
+
+class TestGetUnrealizedPnl(unittest.TestCase):
+    def _make_redis(self, snapshot_map: dict):
+        """Build a mock Redis that returns JSON snapshots keyed by symbol."""
+        mock_redis = MagicMock()
+        mock_redis.get.side_effect = lambda key: (
+            __import__("json").dumps(snapshot_map[key.replace("snapshot:", "")])
+            if key.replace("snapshot:", "") in snapshot_map else None
+        )
+        return mock_redis
+
+    @patch("queries.get_redis")
+    @patch("queries.get_conn")
+    def test_returns_zero_when_no_open_positions(self, mock_get_conn, mock_get_redis):
+        mock_conn, _ = _make_mock_conn([])
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        mock_get_redis.return_value = self._make_redis({})
+        self.assertEqual(get_unrealized_pnl(), 0.0)
+
+    @patch("queries.get_redis")
+    @patch("queries.get_conn")
+    def test_computes_unrealized_pnl_from_snapshot(self, mock_get_conn, mock_get_redis):
+        positions = [{"symbol": "AAPL", "qty": 10, "price": 150.0, "placed_at": None}]
+        mock_conn, _ = _make_mock_conn(positions)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        mock_get_redis.return_value = self._make_redis({"AAPL": {"price": 160.0}})
+        # unrealized = (160 - 150) * 10 = 100
+        self.assertAlmostEqual(get_unrealized_pnl(), 100.0)
+
+    @patch("queries.get_redis")
+    @patch("queries.get_conn")
+    def test_skips_symbols_with_no_snapshot(self, mock_get_conn, mock_get_redis):
+        positions = [
+            {"symbol": "AAPL", "qty": 10, "price": 150.0, "placed_at": None},
+            {"symbol": "TSLA", "qty": 5,  "price": 200.0, "placed_at": None},
+        ]
+        mock_conn, _ = _make_mock_conn(positions)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        # Only AAPL has a snapshot; TSLA is skipped
+        mock_get_redis.return_value = self._make_redis({"AAPL": {"price": 160.0}})
+        self.assertAlmostEqual(get_unrealized_pnl(), 100.0)
+
+    @patch("queries.get_redis")
+    @patch("queries.get_conn")
+    def test_negative_unrealized_pnl(self, mock_get_conn, mock_get_redis):
+        positions = [{"symbol": "AAPL", "qty": 10, "price": 150.0, "placed_at": None}]
+        mock_conn, _ = _make_mock_conn(positions)
+        mock_get_conn.return_value = _make_mock_cm(mock_conn)
+        mock_get_redis.return_value = self._make_redis({"AAPL": {"price": 140.0}})
+        # unrealized = (140 - 150) * 10 = -100
+        self.assertAlmostEqual(get_unrealized_pnl(), -100.0)
+
+
+class TestGetAccountEquity(unittest.TestCase):
+    @patch("queries.get_redis")
+    def test_returns_none_when_key_missing(self, mock_get_redis):
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        mock_get_redis.return_value = mock_redis
+        self.assertIsNone(get_account_equity())
+
+    @patch("queries.get_redis")
+    def test_returns_float_when_key_present(self, mock_get_redis):
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = "99989.25"
+        mock_get_redis.return_value = mock_redis
+        self.assertAlmostEqual(get_account_equity(), 99989.25)
+
+    @patch("queries.get_redis")
+    def test_returns_none_on_invalid_value(self, mock_get_redis):
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = "not-a-number"
+        mock_get_redis.return_value = mock_redis
+        self.assertIsNone(get_account_equity())
 
 
 class TestGetTotalPnl(unittest.TestCase):

@@ -1,7 +1,7 @@
 import sys
 import os
 import json
-from datetime import datetime
+from datetime import datetime, date as Date
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "/app")
@@ -27,6 +27,8 @@ from queries import (
     get_confidence_histogram,
     get_acted_on_rate_by_band,
     get_win_rate_by_band,
+    get_unrealized_pnl,
+    get_account_equity,
 )
 from service_status import get_service_statuses
 
@@ -74,15 +76,41 @@ def _chart_data(days: int = 30) -> dict:
     pnl_history = get_pnl_history(days)
     trade_activity = get_trade_activity(days)
     paper_balance = float(load_config().get("paper_balance", 100_000.0))
+
+    # Cumulative realized P&L from daily_pnl table
     cumulative, running = [], 0.0
     for row in pnl_history:
         running += float(row["realized_pnl"])
         cumulative.append(round(running, 2))
+
+    # Portfolio value: historical days from daily_pnl, plus today always appended
+    # so the chart shows current value even before any trade is closed.
+    portfolio_dates = [str(r["date"]) for r in pnl_history]
     portfolio_values = [round(paper_balance + v, 2) for v in cumulative]
+
+    today_str = str(Date.today())
+    # Prefer Alpaca's authoritative equity; fall back to reconstructed value
+    # if the data service hasn't published it yet.
+    alpaca_equity = get_account_equity()
+    if alpaca_equity is not None:
+        today_portfolio = round(alpaca_equity, 2)
+    else:
+        unrealized = get_unrealized_pnl()
+        today_portfolio = round(paper_balance + running + unrealized, 2)
+
+    if portfolio_dates and portfolio_dates[-1] == today_str:
+        # Replace today's entry (daily_pnl row exists for today) with live value
+        portfolio_values[-1] = today_portfolio
+    else:
+        # Append today as a live snapshot (no closed-trade row yet)
+        portfolio_dates.append(today_str)
+        portfolio_values.append(today_portfolio)
+
     return dict(
         pnl_dates=json.dumps([str(r["date"]) for r in pnl_history]),
         pnl_values=json.dumps([float(r["realized_pnl"]) for r in pnl_history]),
         cumulative_values=json.dumps(cumulative),
+        portfolio_dates=json.dumps(portfolio_dates),
         portfolio_values=json.dumps(portfolio_values),
         trade_dates=json.dumps([str(r["date"]) for r in trade_activity]),
         trade_counts=json.dumps([int(r["count"]) for r in trade_activity]),
@@ -169,6 +197,7 @@ def api_charts():
         pnl_dates=json.loads(raw["pnl_dates"]),
         pnl_values=json.loads(raw["pnl_values"]),
         cumulative_values=json.loads(raw["cumulative_values"]),
+        portfolio_dates=json.loads(raw["portfolio_dates"]),
         portfolio_values=json.loads(raw["portfolio_values"]),
         trade_dates=json.loads(raw["trade_dates"]),
         trade_counts=json.loads(raw["trade_counts"]),

@@ -189,6 +189,50 @@ def get_trade_activity(days: int = 30) -> list:
             return list(cur.fetchall())
 
 
+def get_account_equity() -> Optional[float]:
+    """
+    Return the current account equity from Redis (written by the data service).
+
+    Returns None if the data service hasn't published it yet, so callers can
+    fall back gracefully (e.g. use paper_balance as the starting point).
+    """
+    r = get_redis()
+    raw = r.get("account:equity")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def get_unrealized_pnl() -> float:
+    """
+    Compute total unrealized P&L for all open positions.
+
+    For each open position, fetches the latest snapshot price from Redis and
+    calculates (current_price - buy_price) * qty.  Positions with no snapshot
+    data yet are skipped (treated as 0 unrealized P&L).
+    """
+    positions = get_open_positions()
+    if not positions:
+        return 0.0
+    r = get_redis()
+    total = 0.0
+    for pos in positions:
+        raw = r.get(f"snapshot:{pos['symbol']}")
+        if not raw:
+            continue
+        try:
+            snap = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        current_price = snap.get("price")
+        if current_price is not None:
+            total += (float(current_price) - float(pos["price"])) * float(pos["qty"])
+    return round(total, 2)
+
+
 def get_circuit_breaker_status(today: Date) -> bool:
     """Return True if the circuit breaker was triggered today."""
     sql = "SELECT circuit_breaker_triggered FROM daily_pnl WHERE date = %s"
