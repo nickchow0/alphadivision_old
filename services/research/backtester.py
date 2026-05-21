@@ -92,7 +92,7 @@ def compute_indicators_series(bars: list[dict]) -> list[dict]:
         vs  = vol_std_s.iloc[i]
         va5 = vol_avg5_s.iloc[i]
         v   = volumes.iloc[i]
-        vol_z = float((v - vm) / vs) if (not pd.isna(vs) and vs != 0) else None
+        vol_z = float((v - vm) / vs) if (not pd.isna(vm) and not pd.isna(vs) and vs != 0) else None
         vol_r = float(v / va5)       if (not pd.isna(va5) and va5 != 0) else None
 
         h252 = high_252_s.iloc[i]
