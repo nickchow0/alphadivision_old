@@ -22,6 +22,7 @@ from flask import Flask, jsonify
 import anthropic
 
 from shared.config import load_config
+from shared.redis_client import get_redis
 from collector import collect_bars
 from features import compute_features
 from discoverer import discover_patterns, CandidatePattern
@@ -157,11 +158,39 @@ def _run_phases() -> None:
 
         # Phase 4: Strategy codegen
         log.info("Phase 4: Generating strategy code for %d patterns", patterns_found)
-        anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+        r = get_redis()
+        _codegen_provider = r.get("config:ml_codegen_provider") or ml_cfg.get("codegen_provider", "claude")
+        if isinstance(_codegen_provider, bytes):
+            _codegen_provider = _codegen_provider.decode()
+
+        if _codegen_provider == "gemini":
+            _model_key = "config:ml_codegen_gemini_model"
+            _default_model = "gemini-2.0-flash"
+        else:
+            _model_key = "config:ml_codegen_claude_model"
+            _default_model = ml_cfg.get("codegen_model", "claude-sonnet-4-5")
+
+        _codegen_model = r.get(_model_key) or _default_model
+        if isinstance(_codegen_model, bytes):
+            _codegen_model = _codegen_model.decode()
+
+        log.info("Phase 4 codegen: provider=%s model=%s", _codegen_provider, _codegen_model)
+
+        if _codegen_provider == "gemini":
+            _codegen_client = None
+        else:
+            _codegen_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
         saved_strategies: list[tuple[int, Optional[str]]] = []
 
         for pattern in patterns:
-            code = generate_strategy_code(pattern, client=anthropic_client)
+            code = generate_strategy_code(
+                pattern,
+                client=_codegen_client,
+                provider=_codegen_provider,
+                model=_codegen_model,
+            )
             if code is None:
                 log.warning("Codegen failed for pattern: %.60s", pattern.rule_description)
                 continue
