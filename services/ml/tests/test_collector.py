@@ -98,3 +98,12 @@ def test_fetch_yfinance_returns_empty_on_key_error():
     with patch("collector.yf.download", side_effect=KeyError("SITM")):
         bars = _fetch_yfinance("SITM", date(2024, 1, 1), date(2024, 1, 10))
     assert bars == []
+
+
+def test_collect_bars_omits_symbol_on_key_error():
+    """collect_bars silently drops a symbol when yfinance raises KeyError."""
+    with patch("collector.get_cached_bars", return_value=[]), \
+         patch("collector.save_bars"), \
+         patch("collector.yf.download", side_effect=KeyError("SITM")):
+        result = collect_bars(["SITM"], lookback_days=30)
+    assert result == {}

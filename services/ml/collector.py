@@ -34,8 +34,8 @@ def _fetch_yfinance(symbol: str, start: date, end: date) -> list[dict]:
             progress=False,
             auto_adjust=True,
         )
-    except (KeyError, Exception) as exc:
-        log.warning("%s: yfinance download raised %s: %s", symbol, type(exc).__name__, exc)
+    except KeyError as exc:
+        log.warning("%s: yfinance download raised KeyError: %s", symbol, exc)
         return []
     # Defensive: recent yfinance versions may return MultiIndex columns for single tickers
     if isinstance(df.columns, pd.MultiIndex):
