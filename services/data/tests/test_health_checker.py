@@ -215,9 +215,31 @@ def test_check_all_calls_write_health_result_four_times():
          patch("health_checker.check_ai_api", return_value="ok"), \
          patch("health_checker.write_health_result") as mock_write:
         check_all("key", "secret", "https://paper-api.alpaca.markets",
-                  "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey")
+                  "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey",
+                  check_ai=True)
 
     assert mock_write.call_count == 4
+
+
+def test_check_all_skips_ai_when_check_ai_false():
+    """check_ai=False skips the AI check — only alpaca, finnhub, fred are written."""
+    mock_api = _make_alpaca_api(_sample_bars_df())
+    finnhub_resp = _make_requests_ok_response()
+    fred_resp = _make_fred_ok_response()
+
+    with patch("health_checker.tradeapi.REST", return_value=mock_api), \
+         patch("health_checker.requests.get", side_effect=[finnhub_resp, fred_resp]), \
+         patch("health_checker.get_redis", return_value=_make_redis()), \
+         patch("health_checker.check_ai_api") as mock_ai, \
+         patch("health_checker.write_health_result") as mock_write:
+        result = check_all("key", "secret", "https://paper-api.alpaca.markets",
+                           "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey",
+                           check_ai=False)
+
+    mock_ai.assert_not_called()
+    assert mock_write.call_count == 3
+    assert "claude" not in result
+    assert "gemini" not in result
 
 
 # ---------------------------------------------------------------------------

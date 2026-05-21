@@ -45,7 +45,8 @@ def check_ai_api(provider: str, api_key: str) -> str:
 
 
 def check_all(alpaca_key, alpaca_secret, alpaca_base_url, finnhub_token, fred_api_key,
-              anthropic_api_key: str = "", gemini_api_key: str = "") -> dict:
+              anthropic_api_key: str = "", gemini_api_key: str = "",
+              check_ai: bool = True) -> dict:
     results = {}
 
     # Alpaca (critical — "error" on failure)
@@ -103,21 +104,21 @@ def check_all(alpaca_key, alpaca_secret, alpaca_base_url, finnhub_token, fred_ap
         write_health_result("fred", "warning", 0, str(exc))
         results["fred"] = "warning"
 
-    # AI provider (non-critical — "warning" on failure)
-    # Read active provider from Redis; fall back to "claude" if not set
-    r = get_redis()
-    raw = r.get(_REDIS_AI_PROVIDER_KEY)
-    provider = (raw.decode() if isinstance(raw, bytes) else raw) if raw else "claude"
-    ai_key = gemini_api_key if provider == "gemini" else anthropic_api_key
-    try:
-        start = time.monotonic()
-        check_ai_api(provider, ai_key)
-        latency_ms = int((time.monotonic() - start) * 1000)
-        write_health_result(provider, "ok", latency_ms, None)
-        results[provider] = "ok"
-    except Exception as exc:
-        log.warning(f"{provider.capitalize()} health check failed: {exc}")
-        write_health_result(provider, "warning", 0, str(exc))
-        results[provider] = "warning"
+    # AI provider (non-critical — "warning" on failure, hourly cadence)
+    if check_ai:
+        r = get_redis()
+        raw = r.get(_REDIS_AI_PROVIDER_KEY)
+        provider = (raw.decode() if isinstance(raw, bytes) else raw) if raw else "claude"
+        ai_key = gemini_api_key if provider == "gemini" else anthropic_api_key
+        try:
+            start = time.monotonic()
+            check_ai_api(provider, ai_key)
+            latency_ms = int((time.monotonic() - start) * 1000)
+            write_health_result(provider, "ok", latency_ms, None)
+            results[provider] = "ok"
+        except Exception as exc:
+            log.warning(f"{provider.capitalize()} health check failed: {exc}")
+            write_health_result(provider, "warning", 0, str(exc))
+            results[provider] = "warning"
 
     return results

@@ -21,6 +21,7 @@ _PRICE_INTERVAL = 15 * 60       # 15 minutes
 _NEWS_INTERVAL = 60 * 60        # 60 minutes
 _MACRO_INTERVAL = 24 * 60 * 60  # 24 hours
 _HEALTH_INTERVAL = 5 * 60       # 5 minutes
+_AI_HEALTH_INTERVAL = 60 * 60  # 60 minutes
 _HEARTBEAT_INTERVAL = 60        # 60 seconds
 
 _REDIS_AI_PROVIDER_KEY = "config:ai_provider"
@@ -38,14 +39,20 @@ def _get_env(key: str, required: bool = True) -> str:
 def _health_loop(alpaca_key: str, alpaca_secret: str, alpaca_base_url: str,
                  finnhub_token: str, fred_api_key: str,
                  anthropic_api_key: str = "", gemini_api_key: str = "") -> None:
-    """Daemon thread: run API health checks every 5 minutes."""
+    """Daemon thread: run API health checks every 5 minutes; AI check once per hour."""
+    last_ai_check: float = 0.0
     while True:
+        now = time.time()
+        run_ai = (now - last_ai_check) >= _AI_HEALTH_INTERVAL
         try:
             results = check_all(alpaca_key, alpaca_secret, alpaca_base_url,
                                 finnhub_token, fred_api_key,
                                 anthropic_api_key=anthropic_api_key,
-                                gemini_api_key=gemini_api_key)
+                                gemini_api_key=gemini_api_key,
+                                check_ai=run_ai)
             log.info(f"Health check results: {results}")
+            if run_ai:
+                last_ai_check = now
         except Exception as exc:
             log.error(f"Health check loop error: {exc}")
         time.sleep(_HEALTH_INTERVAL)
