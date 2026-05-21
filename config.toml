@@ -29,3 +29,5 @@ min_forward_return_pct = 1.5
 min_examples           = 30
 min_win_rate_pct       = 45.0
 cron_schedule          = "0 2 * * *"
+codegen_provider       = "claude"
+codegen_model          = "claude-sonnet-4-5"
