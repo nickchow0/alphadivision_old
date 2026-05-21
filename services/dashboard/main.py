@@ -186,6 +186,7 @@ def api_overview():
                 "api_name": h["api_name"],
                 "status": h["status"],
                 "latency_ms": h["latency_ms"],
+                "error_message": h["error_message"],
             }
             for h in api_health
         ],

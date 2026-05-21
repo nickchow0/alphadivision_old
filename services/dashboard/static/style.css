@@ -384,6 +384,34 @@ details[open] .decision-group-header::before {
   border-radius: 8px;
 }
 
+/* ── Health row tooltip ── */
+.health-row {
+  position: relative;
+  cursor: default;
+}
+.health-tooltip {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 100;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 320px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+.health-row:hover .health-tooltip {
+  display: block;
+}
+
 /* ── Mobile (≤ 767px) ── */
 @media (max-width: 767px) {
   .navbar .nav-links { display: none; }

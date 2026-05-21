@@ -109,10 +109,11 @@
       <h2>API Health</h2>
       <div class="status-list" id="api-health-list">
         {% for api in api_health %}
-        <div class="status-row" data-api="{{ api.api_name }}">
+        <div class="status-row health-row" data-api="{{ api.api_name }}"{% if api.error_message %} data-error="{{ api.error_message | e }}"{% endif %}>
           <span class="status-dot {{ 'green' if api.status == 'ok' else ('yellow' if api.status == 'warning' else 'red') }}"></span>
           <span class="status-name">{{ api.api_name }}</span>
           <span class="status-ttl">{{ api.latency_ms ~ 'ms' if api.latency_ms else '—' }}</span>
+          {% if api.error_message %}<span class="health-tooltip">{{ api.error_message | e }}</span>{% endif %}
         </div>
         {% endfor %}
       </div>
@@ -348,6 +349,20 @@
         if (!row) return;
         row.querySelector('.status-dot').className = 'status-dot ' + dot(api.status);
         row.querySelector('.status-ttl').textContent = api.latency_ms ? api.latency_ms + 'ms' : '—';
+        // Update tooltip
+        let tip = row.querySelector('.health-tooltip');
+        if (api.error_message) {
+          if (!tip) {
+            tip = document.createElement('span');
+            tip.className = 'health-tooltip';
+            row.appendChild(tip);
+          }
+          tip.textContent = api.error_message;
+          row.setAttribute('data-error', api.error_message);
+        } else {
+          if (tip) tip.remove();
+          row.removeAttribute('data-error');
+        }
       });
 
       setLastUpdated();
