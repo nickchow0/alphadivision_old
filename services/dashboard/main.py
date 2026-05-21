@@ -31,12 +31,14 @@ from queries import (
     get_account_equity,
     get_ai_settings,
     set_ai_provider,
+    get_ml_codegen_settings,
+    set_ml_codegen_provider,
 )
 from service_status import get_service_statuses
 
 log = get_logger("dashboard")
 
-_ET = ZoneInfo("America/New_York")
+_TZ = ZoneInfo("America/Los_Angeles")
 
 _DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:8080")
 _RESEARCH_URL  = os.environ.get("RESEARCH_URL",  "http://localhost:8081")
@@ -122,7 +124,7 @@ def _chart_data(days: int = 30) -> dict:
 
 @app.route("/")
 def overview():
-    today = datetime.now(_ET).date()
+    today = datetime.now(_TZ).date()
     positions = get_open_positions()
     total_pnl = get_total_pnl()
     daily_pnl = get_daily_pnl_today(today)
@@ -170,7 +172,7 @@ def charts():
 
 @app.route("/api/overview")
 def api_overview():
-    today = datetime.now(_ET).date()
+    today = datetime.now(_TZ).date()
     positions = get_open_positions()
     services = get_service_statuses()
     api_health = get_api_health()
@@ -255,7 +257,7 @@ def api_analysis():
 
 @app.route("/settings")
 def settings():
-    return render_template("settings.html", **get_ai_settings())
+    return render_template("settings.html", **get_ai_settings(), **get_ml_codegen_settings())
 
 
 @app.route("/api/settings/ai-provider", methods=["POST"])
@@ -265,6 +267,18 @@ def api_set_ai_provider():
     model    = data.get("model", "")
     try:
         set_ai_provider(provider, model)
+        return jsonify(ok=True, provider=provider, model=model)
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+
+
+@app.route("/api/settings/ml-codegen", methods=["POST"])
+def api_settings_ml_codegen():
+    data     = request.get_json() or {}
+    provider = data.get("provider", "")
+    model    = data.get("model", "")
+    try:
+        set_ml_codegen_provider(provider, model)
         return jsonify(ok=True, provider=provider, model=model)
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
