@@ -91,3 +91,10 @@ def test_collect_bars_parallel_handles_multiple_symbols():
         result = collect_bars(["AAPL", "MSFT"], lookback_days=30)
     assert "AAPL" in result
     assert "MSFT" in result
+
+
+def test_fetch_yfinance_returns_empty_on_key_error():
+    """KeyError raised inside yf.download (yfinance batch-mode bug) returns []."""
+    with patch("collector.yf.download", side_effect=KeyError("SITM")):
+        bars = _fetch_yfinance("SITM", date(2024, 1, 1), date(2024, 1, 10))
+    assert bars == []

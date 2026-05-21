@@ -23,16 +23,20 @@ def _fetch_yfinance(symbol: str, start: date, end: date) -> list[dict]:
     """Fetch OHLCV bars from yfinance for the given date range.
 
     Returns a list of dicts with keys: date, open, high, low, close, volume.
-    Returns [] if no data is returned (e.g. market holiday, bad symbol).
+    Returns [] if no data is returned (e.g. market holiday, bad symbol, yfinance bug).
     """
-    df = yf.download(
-        symbol,
-        start=start.isoformat(),
-        end=end.isoformat(),
-        interval="1d",
-        progress=False,
-        auto_adjust=True,
-    )
+    try:
+        df = yf.download(
+            symbol,
+            start=start.isoformat(),
+            end=end.isoformat(),
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+        )
+    except (KeyError, Exception) as exc:
+        log.warning("%s: yfinance download raised %s: %s", symbol, type(exc).__name__, exc)
+        return []
     # Defensive: recent yfinance versions may return MultiIndex columns for single tickers
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
