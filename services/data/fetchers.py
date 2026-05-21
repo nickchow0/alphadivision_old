@@ -34,17 +34,17 @@ def fetch_latest_price(symbol: str, api_key: str, secret_key: str, base_url: str
 
 def fetch_bars(symbol: str, api_key: str, secret_key: str, base_url: str) -> list[dict]:
     """
-    Fetch 60 daily OHLCV bars for the given symbol from Alpaca.
+    Fetch 250 daily OHLCV bars for the given symbol from Alpaca.
 
-    Passes an explicit start date (90 calendar days ago) so Alpaca returns
-    a full window of daily bars rather than only today's incomplete bar.
+    Passes an explicit start date (400 calendar days ago) so Alpaca returns
+    enough bars for SMA200 and 52-week range indicators.
 
     Returns a list of dicts with keys: t, o, h, l, c, v.
     Raises ValueError if Alpaca returns no bars.
     """
     api = tradeapi.REST(api_key, secret_key, base_url)
-    start = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
-    bars_resp = api.get_bars(symbol, "1Day", start=start, limit=60)
+    start = (datetime.now(timezone.utc) - timedelta(days=400)).strftime("%Y-%m-%d")
+    bars_resp = api.get_bars(symbol, "1Day", start=start, limit=250)
     df = bars_resp.df
 
     if df.empty:

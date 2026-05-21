@@ -21,14 +21,14 @@ def _make_mock_api(df: pd.DataFrame):
 
 
 def _sample_bars_df() -> pd.DataFrame:
-    index = pd.date_range("2026-01-01", periods=60, freq="D", tz="UTC")
+    index = pd.date_range("2026-01-01", periods=250, freq="D", tz="UTC")
     return pd.DataFrame(
         {
-            "open": [100.0 + i for i in range(60)],
-            "high": [101.0 + i for i in range(60)],
-            "low": [99.0 + i for i in range(60)],
-            "close": [100.5 + i for i in range(60)],
-            "volume": [1_000_000] * 60,
+            "open": [100.0 + i for i in range(250)],
+            "high": [101.0 + i for i in range(250)],
+            "low": [99.0 + i for i in range(250)],
+            "close": [100.5 + i for i in range(250)],
+            "volume": [1_000_000] * 250,
         },
         index=index,
     )
@@ -39,7 +39,7 @@ def test_fetch_bars_returns_list_of_dicts():
     with patch("fetchers.tradeapi.REST", return_value=mock_api):
         result = fetch_bars("AAPL", "key", "secret", "https://paper-api.alpaca.markets")
     assert isinstance(result, list)
-    assert len(result) == 60
+    assert len(result) == 250
 
 
 def test_fetch_bars_dicts_have_required_keys():
@@ -67,7 +67,7 @@ def test_fetch_bars_passes_correct_symbol_and_start_date():
     assert call_kwargs[0][0] == "TSLA"
     assert call_kwargs[0][1] == "1Day"
     assert "start" in call_kwargs[1], "start date must be passed to get_bars"
-    assert call_kwargs[1]["limit"] == 60
+    assert call_kwargs[1]["limit"] == 250
 
 
 # ---------------------------------------------------------------------------
