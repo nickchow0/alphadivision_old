@@ -25,6 +25,11 @@ from queries import (
     get_account_equity,
     get_ml_codegen_settings,
     set_ml_codegen_provider,
+    get_available_models,
+    _fetch_claude_models,
+    _fetch_gemini_models,
+    CLAUDE_MODELS,
+    GEMINI_MODELS,
 )
 
 
@@ -810,41 +815,229 @@ class TestGetMlCodegenSettings(unittest.TestCase):
         self.assertIsInstance(result["codegen_claude_model"], str)
 
 
+_MOCK_AVAILABLE = {
+    "claude": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"],
+    "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"],
+}
+
+
 class TestSetMlCodegenProvider(unittest.TestCase):
+    @patch("queries.get_available_models", return_value=_MOCK_AVAILABLE)
     @patch("queries.get_redis")
-    def test_sets_claude_provider_and_model(self, mock_get_redis):
+    def test_sets_claude_provider_and_model(self, mock_get_redis, _):
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        set_ml_codegen_provider("claude", "claude-sonnet-4-5")
+        set_ml_codegen_provider("claude", "claude-sonnet-4-6")
 
         mock_redis.set.assert_any_call("config:ml_codegen_provider", "claude")
-        mock_redis.set.assert_any_call("config:ml_codegen_claude_model", "claude-sonnet-4-5")
+        mock_redis.set.assert_any_call("config:ml_codegen_claude_model", "claude-sonnet-4-6")
 
+    @patch("queries.get_available_models", return_value=_MOCK_AVAILABLE)
     @patch("queries.get_redis")
-    def test_sets_gemini_provider_and_model(self, mock_get_redis):
+    def test_sets_gemini_provider_and_model(self, mock_get_redis, _):
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        set_ml_codegen_provider("gemini", "gemini-2.0-flash")
+        set_ml_codegen_provider("gemini", "gemini-2.5-flash")
 
         mock_redis.set.assert_any_call("config:ml_codegen_provider", "gemini")
-        mock_redis.set.assert_any_call("config:ml_codegen_gemini_model", "gemini-2.0-flash")
+        mock_redis.set.assert_any_call("config:ml_codegen_gemini_model", "gemini-2.5-flash")
 
+    @patch("queries.get_available_models", return_value=_MOCK_AVAILABLE)
     @patch("queries.get_redis")
-    def test_raises_on_unknown_provider(self, mock_get_redis):
+    def test_raises_on_unknown_provider(self, mock_get_redis, _):
         with self.assertRaises(ValueError):
             set_ml_codegen_provider("openai", "gpt-4")
 
+    @patch("queries.get_available_models", return_value=_MOCK_AVAILABLE)
     @patch("queries.get_redis")
-    def test_raises_on_unknown_claude_model(self, mock_get_redis):
+    def test_raises_on_unknown_claude_model(self, mock_get_redis, _):
         with self.assertRaises(ValueError):
             set_ml_codegen_provider("claude", "claude-opus-99")
 
+    @patch("queries.get_available_models", return_value=_MOCK_AVAILABLE)
     @patch("queries.get_redis")
-    def test_raises_on_unknown_gemini_model(self, mock_get_redis):
+    def test_raises_on_unknown_gemini_model(self, mock_get_redis, _):
         with self.assertRaises(ValueError):
             set_ml_codegen_provider("gemini", "gemini-ultra-99")
+
+
+class TestGetAvailableModels(unittest.TestCase):
+    def _make_redis(self, cached_value=None):
+        mock_r = MagicMock()
+        mock_r.get.return_value = cached_value
+        return mock_r
+
+    @patch("queries.get_redis")
+    def test_returns_cached_result_when_present(self, mock_get_redis):
+        import json
+        cached = {"claude": ["claude-haiku-4-5"], "gemini": ["gemini-2.5-flash"]}
+        mock_get_redis.return_value = self._make_redis(json.dumps(cached).encode())
+
+        result = get_available_models()
+
+        self.assertEqual(result["claude"], ["claude-haiku-4-5"])
+        self.assertEqual(result["gemini"], ["gemini-2.5-flash"])
+
+    @patch("queries._fetch_gemini_models", return_value=["gemini-2.5-flash"])
+    @patch("queries._fetch_claude_models", return_value=["claude-haiku-4-5", "claude-sonnet-4-6"])
+    @patch("queries.get_redis")
+    def test_fetches_from_apis_on_cache_miss(self, mock_get_redis, mock_claude, mock_gemini):
+        mock_get_redis.return_value = self._make_redis(None)
+
+        result = get_available_models()
+
+        self.assertEqual(result["claude"], ["claude-haiku-4-5", "claude-sonnet-4-6"])
+        self.assertEqual(result["gemini"], ["gemini-2.5-flash"])
+
+    @patch("queries._fetch_gemini_models", return_value=["gemini-2.5-flash"])
+    @patch("queries._fetch_claude_models", return_value=["claude-haiku-4-5"])
+    @patch("queries.get_redis")
+    def test_stores_result_in_redis_on_cache_miss(self, mock_get_redis, mock_claude, mock_gemini):
+        import json
+        mock_r = self._make_redis(None)
+        mock_get_redis.return_value = mock_r
+
+        result = get_available_models()
+
+        mock_r.setex.assert_called_once()
+        args = mock_r.setex.call_args[0]
+        self.assertEqual(args[0], "cache:available_models")
+        stored = json.loads(args[2])
+        self.assertIn("claude", stored)
+        self.assertIn("gemini", stored)
+
+    @patch("queries.get_redis")
+    def test_falls_back_to_hardcoded_on_corrupt_cache(self, mock_get_redis):
+        mock_get_redis.return_value = self._make_redis(b"not-valid-json")
+
+        with patch("queries._fetch_claude_models", return_value=CLAUDE_MODELS), \
+             patch("queries._fetch_gemini_models", return_value=GEMINI_MODELS):
+            result = get_available_models()
+
+        self.assertEqual(result["claude"], CLAUDE_MODELS)
+
+
+class TestFetchClaudeModels(unittest.TestCase):
+    def test_returns_fallback_when_no_api_key(self):
+        result = _fetch_claude_models("")
+        self.assertEqual(result, CLAUDE_MODELS)
+
+    def test_returns_api_models_sorted_newest_first(self):
+        mock_model_a = MagicMock()
+        mock_model_a.id = "claude-haiku-4-5"
+        mock_model_b = MagicMock()
+        mock_model_b.id = "claude-sonnet-4-6"
+        mock_model_c = MagicMock()
+        mock_model_c.id = "claude-opus-4-7"
+        mock_client = MagicMock()
+        mock_client.models.list.return_value = [mock_model_a, mock_model_b, mock_model_c]
+
+        # anthropic is imported locally inside the function; patch at the package level
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = _fetch_claude_models("test-key")
+
+        self.assertEqual(result[0], "claude-sonnet-4-6")  # sorted reverse alpha
+
+    def test_filters_out_non_claude_models(self):
+        mock_model_a = MagicMock()
+        mock_model_a.id = "claude-haiku-4-5"
+        mock_model_b = MagicMock()
+        mock_model_b.id = "other-model-1"
+        mock_client = MagicMock()
+        mock_client.models.list.return_value = [mock_model_a, mock_model_b]
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = _fetch_claude_models("test-key")
+
+        self.assertNotIn("other-model-1", result)
+
+    def test_returns_fallback_on_api_exception(self):
+        with patch("anthropic.Anthropic", side_effect=Exception("auth failed")):
+            result = _fetch_claude_models("bad-key")
+        self.assertEqual(result, CLAUDE_MODELS)
+
+
+class TestFetchGeminiModels(unittest.TestCase):
+    def test_returns_fallback_when_no_api_key(self):
+        result = _fetch_gemini_models("")
+        self.assertEqual(result, GEMINI_MODELS)
+
+    def _make_gemini_model(self, name, methods=None):
+        m = MagicMock()
+        m.name = name
+        m.supported_generation_methods = methods or ["generateContent"]
+        return m
+
+    def test_includes_stable_flash_and_pro_models(self):
+        models = [
+            self._make_gemini_model("models/gemini-2.5-flash"),
+            self._make_gemini_model("models/gemini-2.5-pro"),
+        ]
+        # genai is imported as `import google.generativeai as genai` locally
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertIn("gemini-2.5-flash", result)
+        self.assertIn("gemini-2.5-pro", result)
+
+    def test_excludes_non_generate_content_models(self):
+        # One valid model + one that only supports embedContent (not generateContent)
+        models = [
+            self._make_gemini_model("models/gemini-2.5-pro"),                           # valid
+            self._make_gemini_model("models/gemini-2.5-flash", methods=["embedContent"]),  # excluded
+        ]
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertIn("gemini-2.5-pro", result)
+        self.assertNotIn("gemini-2.5-flash", result)
+
+    def test_excludes_tts_and_image_models(self):
+        models = [
+            self._make_gemini_model("models/gemini-2.5-flash"),
+            self._make_gemini_model("models/gemini-tts-1"),
+            self._make_gemini_model("models/gemini-image-gen"),
+        ]
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertIn("gemini-2.5-flash", result)
+        self.assertNotIn("gemini-tts-1", result)
+        self.assertNotIn("gemini-image-gen", result)
+
+    def test_excludes_experimental_and_preview_models(self):
+        models = [
+            self._make_gemini_model("models/gemini-2.5-flash"),
+            self._make_gemini_model("models/gemini-2.5-flash-preview-05-20"),
+            self._make_gemini_model("models/gemini-2.5-flash-exp-1"),
+        ]
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertIn("gemini-2.5-flash", result)
+        self.assertNotIn("gemini-2.5-flash-preview-05-20", result)
+        self.assertNotIn("gemini-2.5-flash-exp-1", result)
+
+    def test_strips_models_prefix(self):
+        models = [self._make_gemini_model("models/gemini-2.5-flash")]
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertTrue(all(not m.startswith("models/") for m in result))
+
+    def test_returns_fallback_on_api_exception(self):
+        with patch("google.generativeai.configure", side_effect=Exception("auth failed")):
+            result = _fetch_gemini_models("bad-key")
+        self.assertEqual(result, GEMINI_MODELS)
+
+    def test_returns_fallback_when_no_models_pass_filter(self):
+        models = [self._make_gemini_model("models/gemini-tts-pro")]
+        with patch("google.generativeai.configure"), \
+             patch("google.generativeai.list_models", return_value=models):
+            result = _fetch_gemini_models("test-key")
+        self.assertEqual(result, GEMINI_MODELS)
 
 
 if __name__ == "__main__":

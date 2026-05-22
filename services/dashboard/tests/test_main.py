@@ -20,7 +20,8 @@ MOCK_DECISIONS = [
      "decided_at": datetime(2026, 5, 15, 9, 29, tzinfo=timezone.utc)},
 ]
 MOCK_WATCHLIST = [
-    {"symbol": "AAPL", "decision": "buy", "confidence": "0.820",
+    {"symbol": "AAPL", "price": 175.5, "rsi": 52.3, "sma20": 172.1, "sma50": 168.5,
+     "decision": "buy", "confidence": "0.820", "skip_reason": None,
      "decided_at": datetime(2026, 5, 15, 9, 29, tzinfo=timezone.utc), "acted_on": True},
 ]
 MOCK_API_HEALTH = [

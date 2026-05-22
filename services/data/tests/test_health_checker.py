@@ -129,16 +129,67 @@ def test_check_all_checks_gemini_when_active():
     finnhub_resp = _make_requests_ok_response()
     fred_resp = _make_fred_ok_response()
 
+    mock_r = MagicMock()
+    mock_r.get.side_effect = lambda key: {
+        "config:ai_provider": b"gemini",
+        "config:gemini_model": b"gemini-2.5-flash",
+    }.get(key)
+
     with patch("health_checker.tradeapi.REST", return_value=mock_api), \
          patch("health_checker.requests.get", side_effect=[finnhub_resp, fred_resp]), \
-         patch("health_checker.get_redis", return_value=_make_redis("gemini")), \
+         patch("health_checker.get_redis", return_value=mock_r), \
          patch("health_checker.check_ai_api", return_value="ok") as mock_ai, \
          patch("health_checker.write_health_result"):
         result = check_all("key", "secret", "https://paper-api.alpaca.markets",
                            "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey")
 
     assert "gemini" in result
-    mock_ai.assert_called_once_with("gemini", "gkey")
+    mock_ai.assert_called_once_with("gemini", "gkey", model="gemini-2.5-flash")
+
+
+def test_check_all_passes_model_from_redis_to_check_ai_api():
+    """check_all reads the model from Redis and forwards it to check_ai_api."""
+    mock_api = _make_alpaca_api(_sample_bars_df())
+    finnhub_resp = _make_requests_ok_response()
+    fred_resp = _make_fred_ok_response()
+
+    mock_r = MagicMock()
+    mock_r.get.side_effect = lambda key: {
+        "config:ai_provider": b"claude",
+        "config:claude_model": b"claude-opus-4-7",
+    }.get(key)
+
+    with patch("health_checker.tradeapi.REST", return_value=mock_api), \
+         patch("health_checker.requests.get", side_effect=[finnhub_resp, fred_resp]), \
+         patch("health_checker.get_redis", return_value=mock_r), \
+         patch("health_checker.check_ai_api", return_value="ok") as mock_ai, \
+         patch("health_checker.write_health_result"):
+        check_all("key", "secret", "https://paper-api.alpaca.markets",
+                  "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey")
+
+    mock_ai.assert_called_once_with("claude", "akey", model="claude-opus-4-7")
+
+
+def test_check_all_uses_empty_model_when_redis_has_no_model_key():
+    """Falls back to empty string model when model key absent from Redis."""
+    mock_api = _make_alpaca_api(_sample_bars_df())
+    finnhub_resp = _make_requests_ok_response()
+    fred_resp = _make_fred_ok_response()
+
+    mock_r = MagicMock()
+    mock_r.get.side_effect = lambda key: {
+        "config:ai_provider": b"claude",
+    }.get(key)  # model key absent → returns None
+
+    with patch("health_checker.tradeapi.REST", return_value=mock_api), \
+         patch("health_checker.requests.get", side_effect=[finnhub_resp, fred_resp]), \
+         patch("health_checker.get_redis", return_value=mock_r), \
+         patch("health_checker.check_ai_api", return_value="ok") as mock_ai, \
+         patch("health_checker.write_health_result"):
+        check_all("key", "secret", "https://paper-api.alpaca.markets",
+                  "ftoken", "fredkey", anthropic_api_key="akey", gemini_api_key="gkey")
+
+    mock_ai.assert_called_once_with("claude", "akey", model="")
 
 
 def test_check_all_returns_error_for_alpaca_on_exception():
@@ -268,3 +319,35 @@ def test_check_ai_api_gemini_calls_genai():
 def test_check_ai_api_raises_on_unknown_provider():
     with pytest.raises(ValueError, match="Unknown AI provider"):
         check_ai_api("gpt4", "test-key")
+
+
+def test_check_ai_api_claude_forwards_model_to_create():
+    mock_client = MagicMock()
+    with patch("health_checker.anthropic.Anthropic", return_value=mock_client):
+        check_ai_api("claude", "test-key", model="claude-opus-4-7")
+    _, kwargs = mock_client.messages.create.call_args
+    assert kwargs["model"] == "claude-opus-4-7"
+
+
+def test_check_ai_api_claude_uses_fallback_when_model_empty():
+    mock_client = MagicMock()
+    with patch("health_checker.anthropic.Anthropic", return_value=mock_client):
+        check_ai_api("claude", "test-key", model="")
+    _, kwargs = mock_client.messages.create.call_args
+    assert kwargs["model"] == "claude-haiku-4-5"
+
+
+def test_check_ai_api_gemini_forwards_model_to_generative_model():
+    mock_model = MagicMock()
+    with patch("health_checker.genai.configure"), \
+         patch("health_checker.genai.GenerativeModel", return_value=mock_model) as mock_gm:
+        check_ai_api("gemini", "test-key", model="gemini-2.5-pro")
+    mock_gm.assert_called_once_with("gemini-2.5-pro")
+
+
+def test_check_ai_api_gemini_uses_fallback_when_model_empty():
+    mock_model = MagicMock()
+    with patch("health_checker.genai.configure"), \
+         patch("health_checker.genai.GenerativeModel", return_value=mock_model) as mock_gm:
+        check_ai_api("gemini", "test-key", model="")
+    mock_gm.assert_called_once_with("gemini-2.5-flash")
