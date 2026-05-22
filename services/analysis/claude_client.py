@@ -1,7 +1,7 @@
 import anthropic
 
 MODEL_HAIKU = "claude-haiku-4-5"
-MODEL_SONNET = "claude-sonnet-4-5"
+MODEL_SONNET = "claude-sonnet-4-6"
 
 _MAX_TOKENS = 256
 

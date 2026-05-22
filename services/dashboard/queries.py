@@ -608,7 +608,7 @@ _CLAUDE_MODEL_KEY   = "config:claude_model"
 _GEMINI_MODEL_KEY   = "config:gemini_model"
 
 CLAUDE_MODELS = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"]
-GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001"]
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro"]
 
 _MODELS_CACHE_KEY = "cache:available_models"
 _MODELS_CACHE_TTL = 24 * 60 * 60  # 24 hours
