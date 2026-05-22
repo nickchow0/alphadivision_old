@@ -7,7 +7,7 @@ from claude_client import build_prompt  # reuse the same prompt — same task, s
 MODEL_FLASH = "gemini-2.0-flash"
 MODEL_PRO   = "gemini-1.5-pro"
 
-_MAX_OUTPUT_TOKENS = 2048
+_MAX_OUTPUT_TOKENS = 1024  # thinking models (2.5-flash/pro) consume tokens internally before output
 
 # Structured output schema — Gemini will always emit valid JSON matching this shape,
 # eliminating truncation-induced parse failures.

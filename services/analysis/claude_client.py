@@ -3,7 +3,7 @@ import anthropic
 MODEL_HAIKU = "claude-haiku-4-5"
 MODEL_SONNET = "claude-sonnet-4-5"
 
-_MAX_TOKENS = 2048
+_MAX_TOKENS = 256
 
 # Forced tool use — Claude always calls this tool, guaranteeing structured output.
 _DECISION_TOOL = {
