@@ -616,7 +616,8 @@ _MODELS_CACHE_TTL = 24 * 60 * 60  # 24 hours
 # Gemini model names that are not useful for text generation / codegen
 _GEMINI_EXCLUDE = re.compile(
     r"tts|image|robotics|lyria|veo|embedding|nano-banana|antigravity"
-    r"|computer-use|deep-research|gemma",
+    r"|computer-use|deep-research|gemma"
+    r"|gemini-2\.0",  # 2.0 generation deprecated / routes to thinking variants
     re.IGNORECASE,
 )
 # Only include stable non-preview Gemini models (allow -001 pinned versions)
