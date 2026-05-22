@@ -1,4 +1,3 @@
-import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -22,12 +21,12 @@ def _sample_snapshot() -> dict:
     }
 
 
-def _make_claude_response(text: str):
-    """Build a mock Anthropic message response."""
-    mock_content = MagicMock()
-    mock_content.text = text
+def _make_claude_response(input_dict: dict):
+    """Build a mock Anthropic message response with a ToolUseBlock."""
+    mock_tool_block = MagicMock()
+    mock_tool_block.input = input_dict
     mock_message = MagicMock()
-    mock_message.content = [mock_content]
+    mock_message.content = [mock_tool_block]
     return mock_message
 
 
@@ -67,11 +66,18 @@ def test_build_prompt_includes_macro_data():
     assert "314.5" in prompt
 
 
-def test_build_prompt_requests_json_format():
+def test_build_prompt_asks_for_trading_recommendation():
     prompt = build_prompt(_sample_snapshot())
-    assert "decision" in prompt
-    assert "confidence" in prompt
-    assert "reasoning" in prompt
+    assert "decision" in prompt.lower() or "recommendation" in prompt.lower()
+
+
+def test_decision_tool_schema_has_required_fields():
+    from claude_client import _DECISION_TOOL
+    schema = _DECISION_TOOL["input_schema"]
+    assert set(schema["required"]) == {"decision", "confidence", "reasoning"}
+    assert "buy" in schema["properties"]["decision"]["enum"]
+    assert "sell" in schema["properties"]["decision"]["enum"]
+    assert "hold" in schema["properties"]["decision"]["enum"]
 
 
 # ---------------------------------------------------------------------------
@@ -79,15 +85,10 @@ def test_build_prompt_requests_json_format():
 # ---------------------------------------------------------------------------
 
 def test_call_claude_returns_parsed_decision():
-    response_json = json.dumps({
-        "decision": "buy",
-        "confidence": 0.78,
-        "reasoning": "Strong technical setup with rising SMA20."
-    })
-    mock_response = _make_claude_response(response_json)
-
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"decision": "buy", "confidence": 0.78, "reasoning": "Strong momentum."}
+        )
         result = call_claude(_sample_snapshot(), "test-api-key")
 
     assert result["decision"] == "buy"
@@ -97,113 +98,85 @@ def test_call_claude_returns_parsed_decision():
 
 
 def test_call_claude_uses_haiku_by_default():
-    response_json = json.dumps({"decision": "hold", "confidence": 0.5, "reasoning": "Neutral."})
-    mock_response = _make_claude_response(response_json)
-
     with patch("claude_client.anthropic.Anthropic") as MockClient:
         mock_create = MockClient.return_value.messages.create
-        mock_create.return_value = mock_response
+        mock_create.return_value = _make_claude_response(
+            {"decision": "hold", "confidence": 0.5, "reasoning": "Neutral."}
+        )
         call_claude(_sample_snapshot(), "test-api-key")
 
     call_kwargs = mock_create.call_args[1]
     assert call_kwargs["model"] == MODEL_HAIKU
 
 
-def test_call_claude_raises_on_non_json_response():
-    mock_response = _make_claude_response("Sorry, I cannot help with that.")
-
+def test_call_claude_uses_tool_choice_forced():
+    """messages.create must be called with tool_choice forcing record_decision."""
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
-        with pytest.raises(ValueError, match="not valid JSON"):
-            call_claude(_sample_snapshot(), "test-api-key")
+        mock_create = MockClient.return_value.messages.create
+        mock_create.return_value = _make_claude_response(
+            {"decision": "hold", "confidence": 0.5, "reasoning": "Neutral."}
+        )
+        call_claude(_sample_snapshot(), "test-api-key")
+
+    call_kwargs = mock_create.call_args[1]
+    assert call_kwargs["tool_choice"] == {"type": "tool", "name": "record_decision"}
+    assert any(t["name"] == "record_decision" for t in call_kwargs["tools"])
 
 
-def test_call_claude_strips_markdown_code_fences():
-    inner = json.dumps({"decision": "buy", "confidence": 0.72, "reasoning": "Strong setup."})
-    fenced = f"```json\n{inner}\n```"
-    mock_response = _make_claude_response(fenced)
-
+def test_call_claude_accepts_custom_model():
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
-        result = call_claude(_sample_snapshot(), "test-api-key")
+        mock_create = MockClient.return_value.messages.create
+        mock_create.return_value = _make_claude_response(
+            {"decision": "sell", "confidence": 0.8, "reasoning": "Downtrend."}
+        )
+        result = call_claude(_sample_snapshot(), "test-api-key", model="claude-sonnet-4-5")
 
-    assert result["decision"] == "buy"
-    assert result["confidence"] == pytest.approx(0.72)
-
-
-def test_call_claude_strips_plain_code_fences():
-    inner = json.dumps({"decision": "sell", "confidence": 0.65, "reasoning": "Downtrend."})
-    fenced = f"```\n{inner}\n```"
-    mock_response = _make_claude_response(fenced)
-
-    with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
-        result = call_claude(_sample_snapshot(), "test-api-key")
-
-    assert result["decision"] == "sell"
+    assert result["model"] == "claude-sonnet-4-5"
+    assert mock_create.call_args[1]["model"] == "claude-sonnet-4-5"
 
 
 def test_call_claude_raises_on_missing_decision_field():
-    response_json = json.dumps({"confidence": 0.7, "reasoning": "Missing decision."})
-    mock_response = _make_claude_response(response_json)
-
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"confidence": 0.7, "reasoning": "Missing decision."}
+        )
         with pytest.raises(ValueError, match="missing field 'decision'"):
             call_claude(_sample_snapshot(), "test-api-key")
 
 
-def test_call_claude_raises_on_invalid_decision_value():
-    response_json = json.dumps({"decision": "maybe", "confidence": 0.6, "reasoning": "Unsure."})
-    mock_response = _make_claude_response(response_json)
-
-    with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
-        with pytest.raises(ValueError, match="Invalid decision"):
-            call_claude(_sample_snapshot(), "test-api-key")
-
-
-def test_call_claude_accepts_custom_model():
-    response_json = json.dumps({"decision": "sell", "confidence": 0.8, "reasoning": "Downtrend."})
-    mock_response = _make_claude_response(response_json)
-
-    with patch("claude_client.anthropic.Anthropic") as MockClient:
-        mock_create = MockClient.return_value.messages.create
-        mock_create.return_value = mock_response
-        result = call_claude(_sample_snapshot(), "test-api-key", model="claude-sonnet-4-5")
-
-    assert result["model"] == "claude-sonnet-4-5"
-    call_kwargs = mock_create.call_args[1]
-    assert call_kwargs["model"] == "claude-sonnet-4-5"
-
-
-def test_call_claude_raises_on_confidence_out_of_range():
-    response_json = json.dumps({"decision": "buy", "confidence": 1.5, "reasoning": "Very confident."})
-    mock_response = _make_claude_response(response_json)
-
-    with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
-        with pytest.raises(ValueError, match="out of range"):
-            call_claude(_sample_snapshot(), "test-api-key")
-
-
 def test_call_claude_raises_on_missing_confidence_field():
-    response_json = json.dumps({"decision": "buy", "reasoning": "Missing confidence."})
-    mock_response = _make_claude_response(response_json)
-
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"decision": "buy", "reasoning": "Missing confidence."}
+        )
         with pytest.raises(ValueError, match="missing field 'confidence'"):
             call_claude(_sample_snapshot(), "test-api-key")
 
 
 def test_call_claude_raises_on_missing_reasoning_field():
-    response_json = json.dumps({"decision": "buy", "confidence": 0.7})
-    mock_response = _make_claude_response(response_json)
-
     with patch("claude_client.anthropic.Anthropic") as MockClient:
-        MockClient.return_value.messages.create.return_value = mock_response
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"decision": "buy", "confidence": 0.7}
+        )
         with pytest.raises(ValueError, match="missing field 'reasoning'"):
+            call_claude(_sample_snapshot(), "test-api-key")
+
+
+def test_call_claude_raises_on_invalid_decision_value():
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"decision": "maybe", "confidence": 0.6, "reasoning": "Unsure."}
+        )
+        with pytest.raises(ValueError, match="Invalid decision"):
+            call_claude(_sample_snapshot(), "test-api-key")
+
+
+def test_call_claude_raises_on_confidence_out_of_range():
+    with patch("claude_client.anthropic.Anthropic") as MockClient:
+        MockClient.return_value.messages.create.return_value = _make_claude_response(
+            {"decision": "buy", "confidence": 1.5, "reasoning": "Very confident."}
+        )
+        with pytest.raises(ValueError, match="out of range"):
             call_claude(_sample_snapshot(), "test-api-key")
 
 

@@ -1,4 +1,3 @@
-import json
 import anthropic
 
 MODEL_HAIKU = "claude-haiku-4-5"
@@ -6,10 +5,34 @@ MODEL_SONNET = "claude-sonnet-4-5"
 
 _MAX_TOKENS = 2048
 
+# Forced tool use — Claude always calls this tool, guaranteeing structured output.
+_DECISION_TOOL = {
+    "name": "record_decision",
+    "description": "Record the swing trading decision for this symbol.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "decision": {
+                "type": "string",
+                "enum": ["buy", "sell", "hold"],
+            },
+            "confidence": {
+                "type": "number",
+                "description": "Confidence level between 0.0 and 1.0",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "1-2 sentence explanation",
+            },
+        },
+        "required": ["decision", "confidence", "reasoning"],
+    },
+}
+
 
 def build_prompt(snapshot: dict) -> str:
     """
-    Build the Claude prompt from a market snapshot dict.
+    Build the analysis prompt from a market snapshot dict.
 
     Includes current price, technical indicators, recent news headlines
     (up to 5), and macro context. Asks for a structured JSON response
@@ -49,8 +72,7 @@ Recent News Headlines (last 24 hours):
 Macro Context:
 {macro_text}
 
-Based on this data, provide a swing trading recommendation. Respond with ONLY valid JSON in this exact format, no other text:
-{{"decision": "buy" | "sell" | "hold", "confidence": <float between 0.0 and 1.0>, "reasoning": "<1-2 sentence explanation>"}}"""
+Based on this data, provide a swing trading recommendation. Keep reasoning to 1-2 sentences."""
 
 
 def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
@@ -65,8 +87,7 @@ def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
     Returns a dict with keys: decision (str), confidence (float),
         reasoning (str), model (str).
 
-    Raises ValueError if response cannot be parsed, missing required fields,
-        or decision value is not one of buy/sell/hold.
+    Raises ValueError if response is missing required fields or has invalid values.
     """
     client = anthropic.Anthropic(api_key=api_key)
     prompt = build_prompt(snapshot)
@@ -74,21 +95,14 @@ def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
     message = client.messages.create(
         model=model,
         max_tokens=_MAX_TOKENS,
+        tools=[_DECISION_TOOL],
+        tool_choice={"type": "tool", "name": "record_decision"},
         messages=[{"role": "user", "content": prompt}],
         timeout=30.0,
     )
 
-    raw = message.content[0].text.strip()
-
-    # Strip markdown code fences if the model wrapped the JSON (e.g. ```json ... ```)
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:]).strip()
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Claude response was not valid JSON: {exc}\nRaw response: {raw}")
+    # tool_choice forces content[0] to always be a ToolUseBlock; input is already a dict
+    parsed = message.content[0].input
 
     for field in ("decision", "confidence", "reasoning"):
         if field not in parsed:
@@ -100,5 +114,6 @@ def call_claude(snapshot: dict, api_key: str, model: str = MODEL_HAIKU) -> dict:
     parsed["confidence"] = float(parsed["confidence"])
     if not (0.0 <= parsed["confidence"] <= 1.0):
         raise ValueError(f"Confidence {parsed['confidence']} out of range [0.0, 1.0]")
+
     parsed["model"] = model
     return parsed
