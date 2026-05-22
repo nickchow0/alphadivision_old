@@ -549,3 +549,32 @@ details[open] .decision-group-header::before {
 
 .save-status.positive { color: var(--green); }
 .save-status.negative { color: var(--red); }
+
+.option-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.option-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.option-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.option-btn.active {
+  background: var(--surface);
+  border-color: var(--blue);
+  color: var(--blue);
+  font-weight: 600;
+}

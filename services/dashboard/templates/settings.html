@@ -9,35 +9,35 @@
   <div class="settings-card">
 
     <div class="settings-row">
-      <label class="settings-label" for="provider-select">Provider</label>
+      <label class="settings-label">Provider</label>
       <div class="settings-control">
-        <select id="provider-select" class="settings-select">
-          <option value="claude" {% if provider == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
-          <option value="gemini" {% if provider == 'gemini' %}selected{% endif %}>Gemini (Google)</option>
-        </select>
+        <div class="option-btn-group" id="provider-group">
+          <button class="option-btn {% if provider == 'claude' %}active{% endif %}" data-value="claude">Claude (Anthropic)</button>
+          <button class="option-btn {% if provider == 'gemini' %}active{% endif %}" data-value="gemini">Gemini (Google)</button>
+        </div>
       </div>
     </div>
 
     <div class="settings-row" id="claude-model-row" {% if provider != 'claude' %}style="display:none"{% endif %}>
-      <label class="settings-label" for="claude-model-select">Claude Model</label>
+      <label class="settings-label">Claude Model</label>
       <div class="settings-control">
-        <select id="claude-model-select" class="settings-select">
+        <div class="option-btn-group" id="claude-model-group">
           {% for m in claude_models %}
-          <option value="{{ m }}" {% if m == claude_model %}selected{% endif %}>{{ m }}</option>
+          <button class="option-btn {% if m == claude_model %}active{% endif %}" data-value="{{ m }}">{{ m }}</button>
           {% endfor %}
-        </select>
+        </div>
         <p class="settings-hint">Haiku is faster and cheaper; Sonnet reasons more deeply.</p>
       </div>
     </div>
 
     <div class="settings-row" id="gemini-model-row" {% if provider != 'gemini' %}style="display:none"{% endif %}>
-      <label class="settings-label" for="gemini-model-select">Gemini Model</label>
+      <label class="settings-label">Gemini Model</label>
       <div class="settings-control">
-        <select id="gemini-model-select" class="settings-select">
+        <div class="option-btn-group" id="gemini-model-group">
           {% for m in gemini_models %}
-          <option value="{{ m }}" {% if m == gemini_model %}selected{% endif %}>{{ m }}</option>
+          <button class="option-btn {% if m == gemini_model %}active{% endif %}" data-value="{{ m }}">{{ m }}</button>
           {% endfor %}
-        </select>
+        </div>
         <p class="settings-hint">Flash is faster and cheaper; Pro reasons more deeply.</p>
       </div>
     </div>
@@ -58,35 +58,35 @@
   <div class="settings-card">
 
     <div class="settings-row">
-      <label class="settings-label" for="codegen-provider-select">Provider</label>
+      <label class="settings-label">Provider</label>
       <div class="settings-control">
-        <select id="codegen-provider-select" class="settings-select">
-          <option value="claude" {% if codegen_provider == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
-          <option value="gemini" {% if codegen_provider == 'gemini' %}selected{% endif %}>Gemini (Google)</option>
-        </select>
+        <div class="option-btn-group" id="codegen-provider-group">
+          <button class="option-btn {% if codegen_provider == 'claude' %}active{% endif %}" data-value="claude">Claude (Anthropic)</button>
+          <button class="option-btn {% if codegen_provider == 'gemini' %}active{% endif %}" data-value="gemini">Gemini (Google)</button>
+        </div>
       </div>
     </div>
 
     <div class="settings-row" id="codegen-claude-model-row" {% if codegen_provider != 'claude' %}style="display:none"{% endif %}>
-      <label class="settings-label" for="codegen-claude-model-select">Claude Model</label>
+      <label class="settings-label">Claude Model</label>
       <div class="settings-control">
-        <select id="codegen-claude-model-select" class="settings-select">
+        <div class="option-btn-group" id="codegen-claude-model-group">
           {% for m in claude_models %}
-          <option value="{{ m }}" {% if m == codegen_claude_model %}selected{% endif %}>{{ m }}</option>
+          <button class="option-btn {% if m == codegen_claude_model %}active{% endif %}" data-value="{{ m }}">{{ m }}</button>
           {% endfor %}
-        </select>
+        </div>
         <p class="settings-hint">Used during the nightly ML pipeline run at 2am.</p>
       </div>
     </div>
 
     <div class="settings-row" id="codegen-gemini-model-row" {% if codegen_provider != 'gemini' %}style="display:none"{% endif %}>
-      <label class="settings-label" for="codegen-gemini-model-select">Gemini Model</label>
+      <label class="settings-label">Gemini Model</label>
       <div class="settings-control">
-        <select id="codegen-gemini-model-select" class="settings-select">
+        <div class="option-btn-group" id="codegen-gemini-model-group">
           {% for m in gemini_models %}
-          <option value="{{ m }}" {% if m == codegen_gemini_model %}selected{% endif %}>{{ m }}</option>
+          <button class="option-btn {% if m == codegen_gemini_model %}active{% endif %}" data-value="{{ m }}">{{ m }}</button>
           {% endfor %}
-        </select>
+        </div>
         <p class="settings-hint">Used during the nightly ML pipeline run at 2am.</p>
       </div>
     </div>
@@ -105,28 +105,36 @@
 
 {% block extra_js %}
 <script>
+  function makeOptionGroup(groupId, onChange) {
+    const group = document.getElementById(groupId);
+    group.addEventListener('click', e => {
+      const btn = e.target.closest('.option-btn');
+      if (!btn) return;
+      group.querySelectorAll('.option-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (onChange) onChange(btn.dataset.value);
+    });
+    return {
+      value: () => group.querySelector('.option-btn.active')?.dataset.value ?? '',
+    };
+  }
+
   // ── Analysis Service card ────────────────────────────────────────────────────
-  const providerSelect     = document.getElementById('provider-select');
-  const claudeModelRow     = document.getElementById('claude-model-row');
-  const geminiModelRow     = document.getElementById('gemini-model-row');
-  const claudeModelSelect  = document.getElementById('claude-model-select');
-  const geminiModelSelect  = document.getElementById('gemini-model-select');
+  const claudeModelRow  = document.getElementById('claude-model-row');
+  const geminiModelRow  = document.getElementById('gemini-model-row');
   const analysisSaveBtn    = document.getElementById('analysis-save-btn');
   const analysisSaveStatus = document.getElementById('analysis-save-status');
 
-  function updateAnalysisModelVisibility() {
-    const isGemini = providerSelect.value === 'gemini';
-    claudeModelRow.style.display = isGemini ? 'none' : '';
-    geminiModelRow.style.display = isGemini ? '' : 'none';
-  }
-
-  providerSelect.addEventListener('change', updateAnalysisModelVisibility);
+  const providerGroup      = makeOptionGroup('provider-group', val => {
+    claudeModelRow.style.display = val === 'claude' ? '' : 'none';
+    geminiModelRow.style.display = val === 'gemini' ? '' : 'none';
+  });
+  const claudeModelGroup   = makeOptionGroup('claude-model-group');
+  const geminiModelGroup   = makeOptionGroup('gemini-model-group');
 
   analysisSaveBtn.addEventListener('click', async () => {
-    const provider = providerSelect.value;
-    const model    = provider === 'gemini'
-      ? geminiModelSelect.value
-      : claudeModelSelect.value;
+    const provider = providerGroup.value();
+    const model    = provider === 'gemini' ? geminiModelGroup.value() : claudeModelGroup.value();
 
     analysisSaveBtn.disabled = true;
     analysisSaveStatus.textContent = 'Saving…';
@@ -146,7 +154,7 @@
         analysisSaveStatus.textContent = `Error: ${data.error}`;
         analysisSaveStatus.className = 'save-status negative';
       }
-    } catch (err) {
+    } catch {
       analysisSaveStatus.textContent = 'Network error — try again.';
       analysisSaveStatus.className = 'save-status negative';
     } finally {
@@ -155,27 +163,21 @@
   });
 
   // ── ML Strategy Codegen card ─────────────────────────────────────────────────
-  const codegenProviderSelect    = document.getElementById('codegen-provider-select');
-  const codegenClaudeModelRow    = document.getElementById('codegen-claude-model-row');
-  const codegenGeminiModelRow    = document.getElementById('codegen-gemini-model-row');
-  const codegenClaudeModelSelect = document.getElementById('codegen-claude-model-select');
-  const codegenGeminiModelSelect = document.getElementById('codegen-gemini-model-select');
-  const codegenSaveBtn           = document.getElementById('codegen-save-btn');
-  const codegenSaveStatus        = document.getElementById('codegen-save-status');
+  const codegenClaudeModelRow = document.getElementById('codegen-claude-model-row');
+  const codegenGeminiModelRow = document.getElementById('codegen-gemini-model-row');
+  const codegenSaveBtn        = document.getElementById('codegen-save-btn');
+  const codegenSaveStatus     = document.getElementById('codegen-save-status');
 
-  function updateCodegenModelVisibility() {
-    const isGemini = codegenProviderSelect.value === 'gemini';
-    codegenClaudeModelRow.style.display = isGemini ? 'none' : '';
-    codegenGeminiModelRow.style.display = isGemini ? '' : 'none';
-  }
-
-  codegenProviderSelect.addEventListener('change', updateCodegenModelVisibility);
+  const codegenProviderGroup      = makeOptionGroup('codegen-provider-group', val => {
+    codegenClaudeModelRow.style.display = val === 'claude' ? '' : 'none';
+    codegenGeminiModelRow.style.display = val === 'gemini' ? '' : 'none';
+  });
+  const codegenClaudeModelGroup   = makeOptionGroup('codegen-claude-model-group');
+  const codegenGeminiModelGroup   = makeOptionGroup('codegen-gemini-model-group');
 
   codegenSaveBtn.addEventListener('click', async () => {
-    const provider = codegenProviderSelect.value;
-    const model    = provider === 'gemini'
-      ? codegenGeminiModelSelect.value
-      : codegenClaudeModelSelect.value;
+    const provider = codegenProviderGroup.value();
+    const model    = provider === 'gemini' ? codegenGeminiModelGroup.value() : codegenClaudeModelGroup.value();
 
     codegenSaveBtn.disabled = true;
     codegenSaveStatus.textContent = 'Saving…';
@@ -195,7 +197,7 @@
         codegenSaveStatus.textContent = `Error: ${data.error}`;
         codegenSaveStatus.className = 'save-status negative';
       }
-    } catch (err) {
+    } catch {
       codegenSaveStatus.textContent = 'Network error — try again.';
       codegenSaveStatus.className = 'save-status negative';
     } finally {
