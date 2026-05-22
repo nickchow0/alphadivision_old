@@ -652,16 +652,32 @@ def get_available_models() -> dict:
     return result
 
 
+_CLAUDE_DATED = re.compile(r"-20\d{6}$")       # e.g. claude-sonnet-4-5-20250929
+_CLAUDE_VERSIONED = re.compile(r"^claude-\w+-\d+-\d+$")  # must have family-major-minor
+
+
 def _fetch_claude_models(api_key: str) -> list[str]:
     if not api_key:
         return CLAUDE_MODELS
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
-        models = [m.id for m in client.models.list()]
-        # Keep only claude-* models, sort newest first
+        all_ids = [m.id for m in client.models.list() if m.id.startswith("claude-")]
+
+        undated = {m for m in all_ids if not _CLAUDE_DATED.search(m)}
+
+        # For dated models whose base name (date stripped) isn't already present,
+        # synthesize it — e.g. claude-haiku-4-5-20251001 → claude-haiku-4-5.
+        # The base name is a valid API alias even if list_models() omits it.
+        for m in all_ids:
+            if _CLAUDE_DATED.search(m):
+                base = _CLAUDE_DATED.sub("", m)
+                if base not in undated:
+                    undated.add(base)
+
+        # Drop names without a proper major.minor version (e.g. claude-sonnet-4)
         models = sorted(
-            [m for m in models if m.startswith("claude-")],
+            [m for m in undated if _CLAUDE_VERSIONED.match(m)],
             reverse=True,
         )
         return models if models else CLAUDE_MODELS
