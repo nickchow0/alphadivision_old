@@ -1,4 +1,6 @@
 import json
+import os
+import re
 from datetime import date as Date
 from typing import Optional
 
@@ -605,8 +607,89 @@ _AI_PROVIDER_KEY    = "config:ai_provider"
 _CLAUDE_MODEL_KEY   = "config:claude_model"
 _GEMINI_MODEL_KEY   = "config:gemini_model"
 
-CLAUDE_MODELS = ["claude-haiku-4-5", "claude-sonnet-4-5"]
-GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-pro"]
+CLAUDE_MODELS = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"]
+GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001"]
+
+_MODELS_CACHE_KEY = "cache:available_models"
+_MODELS_CACHE_TTL = 24 * 60 * 60  # 24 hours
+
+# Gemini model names that are not useful for text generation / codegen
+_GEMINI_EXCLUDE = re.compile(
+    r"tts|image|robotics|lyria|veo|embedding|nano-banana|antigravity"
+    r"|computer-use|deep-research|gemma",
+    re.IGNORECASE,
+)
+# Only include stable non-preview Gemini models (allow -001 pinned versions)
+_GEMINI_STABLE = re.compile(r"^models/gemini-[\d.]+-(?:flash|pro)(?:-\d+)?$")
+
+
+def get_available_models() -> dict:
+    """Return {'claude': [...], 'gemini': [...]} fetched from each API.
+
+    Results are cached in Redis for 24 hours. Falls back to the hardcoded
+    CLAUDE_MODELS / GEMINI_MODELS lists if either API call fails.
+    """
+    r = get_redis()
+    cached = r.get(_MODELS_CACHE_KEY)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
+    claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+
+    claude_models = _fetch_claude_models(claude_key)
+    gemini_models = _fetch_gemini_models(gemini_key)
+
+    result = {"claude": claude_models, "gemini": gemini_models}
+    try:
+        r.setex(_MODELS_CACHE_KEY, _MODELS_CACHE_TTL, json.dumps(result))
+    except Exception:
+        pass
+    return result
+
+
+def _fetch_claude_models(api_key: str) -> list[str]:
+    if not api_key:
+        return CLAUDE_MODELS
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        models = [m.id for m in client.models.list()]
+        # Keep only claude-* models, sort newest first
+        models = sorted(
+            [m for m in models if m.startswith("claude-")],
+            reverse=True,
+        )
+        return models if models else CLAUDE_MODELS
+    except Exception:
+        return CLAUDE_MODELS
+
+
+def _fetch_gemini_models(api_key: str) -> list[str]:
+    if not api_key:
+        return GEMINI_MODELS
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        names = []
+        for m in genai.list_models():
+            if "generateContent" not in m.supported_generation_methods:
+                continue
+            name = m.name  # e.g. "models/gemini-2.5-flash"
+            if _GEMINI_EXCLUDE.search(name):
+                continue
+            if not _GEMINI_STABLE.match(name):
+                continue
+            # Strip "models/" prefix
+            names.append(name.replace("models/", ""))
+        # Sort newest first by version number
+        names.sort(key=lambda s: [int(x) for x in re.findall(r"\d+", s)], reverse=True)
+        return names if names else GEMINI_MODELS
+    except Exception:
+        return GEMINI_MODELS
 
 _ML_CODEGEN_PROVIDER_KEY     = "config:ml_codegen_provider"
 _ML_CODEGEN_CLAUDE_MODEL_KEY = "config:ml_codegen_claude_model"
@@ -626,7 +709,7 @@ def get_ai_settings() -> dict:
 
     provider     = (r.get(_AI_PROVIDER_KEY)    or analysis_cfg.get("ai_provider",  "claude"))
     claude_model = (r.get(_CLAUDE_MODEL_KEY)   or analysis_cfg.get("claude_model", "claude-haiku-4-5"))
-    gemini_model = (r.get(_GEMINI_MODEL_KEY)   or analysis_cfg.get("gemini_model", "gemini-2.0-flash"))
+    gemini_model = (r.get(_GEMINI_MODEL_KEY)   or analysis_cfg.get("gemini_model", "gemini-2.5-flash"))
 
     # Redis returns bytes; decode if needed
     if isinstance(provider, bytes):
@@ -636,12 +719,13 @@ def get_ai_settings() -> dict:
     if isinstance(gemini_model, bytes):
         gemini_model = gemini_model.decode()
 
+    available = get_available_models()
     return {
         "provider":     provider,
         "claude_model": claude_model,
         "gemini_model": gemini_model,
-        "claude_models": CLAUDE_MODELS,
-        "gemini_models": GEMINI_MODELS,
+        "claude_models": available["claude"],
+        "gemini_models": available["gemini"],
     }
 
 
@@ -654,11 +738,12 @@ def set_ai_provider(provider: str, model: str) -> None:
 
     Raises ValueError for unknown provider or model values.
     """
+    available = get_available_models()
     if provider not in ("claude", "gemini"):
         raise ValueError(f"Unknown provider '{provider}' — must be 'claude' or 'gemini'")
-    if provider == "claude" and model not in CLAUDE_MODELS:
+    if provider == "claude" and model not in available["claude"]:
         raise ValueError(f"Unknown Claude model '{model}'")
-    if provider == "gemini" and model not in GEMINI_MODELS:
+    if provider == "gemini" and model not in available["gemini"]:
         raise ValueError(f"Unknown Gemini model '{model}'")
 
     r = get_redis()
@@ -683,8 +768,8 @@ def get_ml_codegen_settings() -> dict:
     r = get_redis()
 
     provider     = r.get(_ML_CODEGEN_PROVIDER_KEY)     or ml_cfg.get("codegen_provider", "claude")
-    claude_model = r.get(_ML_CODEGEN_CLAUDE_MODEL_KEY) or ml_cfg.get("codegen_model", "claude-sonnet-4-5")
-    gemini_model = r.get(_ML_CODEGEN_GEMINI_MODEL_KEY) or "gemini-2.0-flash"
+    claude_model = r.get(_ML_CODEGEN_CLAUDE_MODEL_KEY) or ml_cfg.get("codegen_model", "claude-sonnet-4-6")
+    gemini_model = r.get(_ML_CODEGEN_GEMINI_MODEL_KEY) or "gemini-2.5-flash"
 
     if isinstance(provider, bytes):
         provider = provider.decode()
@@ -693,12 +778,13 @@ def get_ml_codegen_settings() -> dict:
     if isinstance(gemini_model, bytes):
         gemini_model = gemini_model.decode()
 
+    available = get_available_models()
     return {
         "codegen_provider":     provider,
         "codegen_claude_model": claude_model,
         "codegen_gemini_model": gemini_model,
-        "claude_models":        CLAUDE_MODELS,
-        "gemini_models":        GEMINI_MODELS,
+        "claude_models":        available["claude"],
+        "gemini_models":        available["gemini"],
     }
 
 
@@ -708,11 +794,12 @@ def set_ml_codegen_provider(provider: str, model: str) -> None:
 
     Raises ValueError for unknown provider or model values.
     """
+    available = get_available_models()
     if provider not in ("claude", "gemini"):
         raise ValueError(f"Unknown provider '{provider}' — must be 'claude' or 'gemini'")
-    if provider == "claude" and model not in CLAUDE_MODELS:
+    if provider == "claude" and model not in available["claude"]:
         raise ValueError(f"Unknown Claude model '{model}'")
-    if provider == "gemini" and model not in GEMINI_MODELS:
+    if provider == "gemini" and model not in available["gemini"]:
         raise ValueError(f"Unknown Gemini model '{model}'")
 
     r = get_redis()
