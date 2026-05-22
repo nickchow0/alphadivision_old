@@ -31,7 +31,8 @@ from health_server import start_health_server
 
 log = get_logger("execution")
 
-_ET = ZoneInfo("America/New_York")
+_ET = ZoneInfo("America/New_York")   # trading window checks (market hours are ET)
+_PT = ZoneInfo("America/Los_Angeles")  # daily P&L date boundary
 _HEARTBEAT_KEY = "heartbeat:execution"
 _HEARTBEAT_TTL = 90        # seconds — refreshed every 60s so TTL never expires
 _HEARTBEAT_INTERVAL = 60   # seconds
@@ -69,7 +70,7 @@ def _process_signal(signal: dict, api) -> None:
 
     try:
         now = datetime.now(_ET)
-        today = now.date()
+        today = datetime.now(_PT).date()
 
         # --- Trading window check ---
         allowed, reason = check_trading_window(now)

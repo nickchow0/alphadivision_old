@@ -77,16 +77,18 @@ def update_trade_fill(trade_id: int, filled_price: Optional[float], status: str)
 
     Called after poll_for_fill resolves the order. Sets `price` to the real
     Alpaca filled_avg_price so slippage is calculated against the true fill,
-    not the estimated sizing price.
+    not the estimated sizing price. Sets filled_at to NOW() on fill so
+    get_trade_stats() can match buy/sell pairs via the filled_at column.
     """
     sql = """
         UPDATE trades
-        SET price = %s, status = %s
+        SET price = %s, status = %s,
+            filled_at = CASE WHEN %s = 'filled' THEN NOW() ELSE filled_at END
         WHERE id = %s
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (filled_price, status, trade_id))
+            cur.execute(sql, (filled_price, status, status, trade_id))
 
 
 def poll_for_fill(

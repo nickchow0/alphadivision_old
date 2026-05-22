@@ -190,9 +190,16 @@ def test_update_trade_fill_sets_correct_params():
     with patch("order_placer.get_conn", return_value=_make_mock_cm(mock_conn)):
         update_trade_fill(trade_id=7, filled_price=176.30, status="filled")
     _, params = mock_cursor.execute.call_args[0]
-    assert 176.30 in params
-    assert "filled" in params
-    assert 7 in params
+    # (filled_price, status, status, trade_id) — status appears twice for CASE expression
+    assert params == (176.30, "filled", "filled", 7)
+
+
+def test_update_trade_fill_sets_filled_at_in_sql():
+    mock_conn, mock_cursor = _make_mock_conn()
+    with patch("order_placer.get_conn", return_value=_make_mock_cm(mock_conn)):
+        update_trade_fill(trade_id=7, filled_price=176.30, status="filled")
+    sql, _ = mock_cursor.execute.call_args[0]
+    assert "filled_at" in sql
 
 
 def test_update_trade_fill_accepts_failed_status():
@@ -200,8 +207,8 @@ def test_update_trade_fill_accepts_failed_status():
     with patch("order_placer.get_conn", return_value=_make_mock_cm(mock_conn)):
         update_trade_fill(trade_id=3, filled_price=None, status="failed")
     _, params = mock_cursor.execute.call_args[0]
-    assert "failed" in params
-    assert 3 in params
+    # (filled_price, status, status, trade_id)
+    assert params == (None, "failed", "failed", 3)
 
 
 # ---------------------------------------------------------------------------
